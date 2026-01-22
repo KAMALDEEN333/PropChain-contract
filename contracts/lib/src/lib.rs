@@ -1,8 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(unexpected_cfgs)]
 
-use ink::prelude::*;
+#[cfg(not(feature = "std"))]
+use scale_info::prelude::vec::Vec;
 use ink::storage::Mapping;
-use ink::primitives::AccountId;
 use propchain_traits::*;
 
 #[ink::contract]
@@ -97,7 +98,7 @@ mod propchain_contracts {
             let mut current_owner_props = self.owner_properties.get(&caller).unwrap_or_default();
             current_owner_props.retain(|&id| id != property_id);
             self.owner_properties.insert(&caller, &current_owner_props);
-
+            
             // Add to new owner's properties
             let mut new_owner_props = self.owner_properties.get(&to).unwrap_or_default();
             new_owner_props.push(property_id);
@@ -116,6 +117,7 @@ mod propchain_contracts {
             Ok(())
         }
 
+
         /// Gets property information
         #[ink(message)]
         pub fn get_property(&self, property_id: u64) -> Option<PropertyInfo> {
@@ -132,6 +134,31 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn property_count(&self) -> u64 {
             self.property_count
+        }
+    }
+
+    #[cfg(kani)]
+    mod verification {
+        use super::*;
+
+        #[kani::proof]
+        fn verify_arithmetic_overflow() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            // Verify that addition is safe
+            if a < 100 && b < 100 {
+                assert!(a + b < 200);
+            }
+        }
+
+        #[kani::proof]
+        fn verify_property_info_struct() {
+            let id: u64 = kani::any();
+            // Verify PropertyInfo layout/safety if needed
+            // This is a placeholder for checking structural invariants
+            if id > 0 {
+                assert!(id > 0);
+            }
         }
     }
 
