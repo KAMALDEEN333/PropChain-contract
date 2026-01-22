@@ -1,0 +1,39 @@
+[package]
+name = "propchain-oracle"
+version = "1.0.0"
+authors = ["PropChain Team <dev@propchain.io>"]
+edition = "2021"
+description = "Property Valuation Oracle smart contract"
+license = "MIT"
+homepage = "https://propchain.io"
+repository = "https://github.com/MettaChain/PropChain-contract"
+keywords = ["blockchain", "real-estate", "oracle", "valuation", "ink", "substrate"]
+categories = ["cryptography::cryptocurrencies", "web-programming::http-client"]
+readme = "../../README.md"
+publish = false
+
+[dependencies]
+ink = { workspace = true, features = ["std"] }
+scale = { workspace = true, features = ["std"] }
+scale-info = { workspace = true, features = ["std"] }
+propchain-traits = { path = "../traits" }
+
+[dev-dependencies]
+ink_e2e = "5.0.0"
+
+[lib]
+name = "propchain_oracle"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[features]
+default = ["std"]
+std = [
+    "ink/std",
+    "scale/std",
+    "scale-info/std",
+]
+ink-as-dependency = []
+
+# Testing features
+e2e-tests = []
