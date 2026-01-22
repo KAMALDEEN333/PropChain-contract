@@ -25,6 +25,8 @@ mod propchain_contracts {
         properties: Mapping<u64, PropertyInfo>,
         /// Mapping from owner to their properties
         owner_properties: Mapping<AccountId, Vec<u64>>,
+        /// Mapping from property ID to approved account
+        approvals: Mapping<u64, AccountId>,
         /// Property counter
         property_count: u64,
     }
@@ -33,15 +35,36 @@ mod propchain_contracts {
     pub struct PropertyRegistered {
         #[ink(topic)]
         property_id: u64,
+        #[ink(topic)]
         owner: AccountId,
+        version: u8,
     }
 
     #[ink(event)]
     pub struct PropertyTransferred {
         #[ink(topic)]
         property_id: u64,
+        #[ink(topic)]
         from: AccountId,
+        #[ink(topic)]
         to: AccountId,
+    }
+
+    #[ink(event)]
+    pub struct PropertyMetadataUpdated {
+        #[ink(topic)]
+        property_id: u64,
+        metadata: PropertyMetadata,
+    }
+
+    #[ink(event)]
+    pub struct Approval {
+        #[ink(topic)]
+        property_id: u64,
+        #[ink(topic)]
+        owner: AccountId,
+        #[ink(topic)]
+        approved: AccountId,
     }
 
     impl PropertyRegistry {
@@ -51,6 +74,7 @@ mod propchain_contracts {
             Self {
                 properties: Mapping::default(),
                 owner_properties: Mapping::default(),
+                approvals: Mapping::default(),
                 property_count: 0,
             }
         }
@@ -78,6 +102,7 @@ mod propchain_contracts {
             self.env().emit_event(PropertyRegistered {
                 property_id,
                 owner: caller,
+                version: 1,
             });
 
             Ok(property_id)
@@ -89,7 +114,8 @@ mod propchain_contracts {
             let caller = self.env().caller();
             let mut property = self.properties.get(&property_id).ok_or(Error::PropertyNotFound)?;
 
-            if property.owner != caller {
+            let approved = self.approvals.get(&property_id);
+            if property.owner != caller && Some(caller) != approved {
                 return Err(Error::Unauthorized);
             }
 
@@ -107,9 +133,12 @@ mod propchain_contracts {
             property.owner = to;
             self.properties.insert(&property_id, &property);
 
+            // Clear approval
+            self.approvals.remove(&property_id);
+
             self.env().emit_event(PropertyTransferred {
                 property_id,
-                from: caller,
+                from: property.owner, // Use recorded owner as from, in case caller is approved
                 to,
             });
 
@@ -132,6 +161,79 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn property_count(&self) -> u64 {
             self.property_count
+        }
+
+        /// Updates property metadata
+        #[ink(message)]
+        pub fn update_metadata(&mut self, property_id: u64, metadata: PropertyMetadata) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let mut property = self.properties.get(&property_id).ok_or(Error::PropertyNotFound)?;
+
+            if property.owner != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            // check if metadata is valid (basic check)
+            if metadata.location.is_empty() {
+                return Err(Error::InvalidMetadata);
+            }
+
+            property.metadata = metadata.clone();
+            self.properties.insert(&property_id, &property);
+
+            self.env().emit_event(PropertyMetadataUpdated {
+                property_id,
+                metadata,
+            });
+
+            Ok(())
+        }
+
+        /// Approves an account to transfer a specific property
+        #[ink(message)]
+        pub fn approve(&mut self, property_id: u64, to: Option<AccountId>) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let property = self.properties.get(&property_id).ok_or(Error::PropertyNotFound)?;
+
+            if property.owner != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            if let Some(account) = to {
+                self.approvals.insert(&property_id, &account);
+                self.env().emit_event(Approval {
+                    property_id,
+                    owner: caller,
+                    approved: account,
+                });
+            } else {
+                self.approvals.remove(&property_id);
+                 // We could emit an approval with 0x0 or special handling, 
+                 // but for now let's just emit if setting a new approval. 
+                 // Or we should emit approval to 0 account if clearing?
+                 // Let's assume Option<AccountId> maps to clearing.
+                 // For the event, we need an AccountId.
+                 // Let's rely on the fact that 'to' is Option.
+                 // If we strictly follow ERC721 style, we should emit 0 address.
+                 // But ink! AccountId is 32 bytes.
+                 // Let's just not emit if clearing for simplicity or emit to zero account if preferred.
+                 // Re-reading requirements: "Structured event emission...".
+                 // Let's emit with a zero account for None.
+                let zero_account = AccountId::from([0u8; 32]);
+                self.env().emit_event(Approval {
+                    property_id,
+                    owner: caller,
+                    approved: zero_account,
+                });
+            }
+
+            Ok(())
+        }
+
+        /// Gets the approved account for a property
+        #[ink(message)]
+        pub fn get_approved(&self, property_id: u64) -> Option<AccountId> {
+            self.approvals.get(&property_id)
         }
     }
 
