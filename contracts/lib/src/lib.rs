@@ -24,7 +24,7 @@ mod propchain_contracts {
     /// Property Registry contract
     #[ink(storage)]
     pub struct PropertyRegistry {
-        /// Mapping from property ID to property information
+        /// Mapping from property ID to property informatio
         properties: Mapping<u64, PropertyInfo>,
         /// Mapping from owner to their properties
         owner_properties: Mapping<AccountId, Vec<u64>>,
