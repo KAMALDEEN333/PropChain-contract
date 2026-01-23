@@ -878,6 +878,34 @@ mod propchain_contracts {
                 max_gas_used: self.gas_tracker.max_gas_used,
             }
         }
+
+        /// Performance Monitoring: Gets optimization recommendations
+        #[ink(message)]
+        pub fn get_performance_recommendations(&self) -> Vec<String> {
+            let mut recommendations = Vec::new();
+            
+            // Check for high gas usage operations
+            if self.gas_tracker.average_operation_gas > 50000 {
+                recommendations.push("Consider using batch operations for multiple properties".to_string());
+            }
+            
+            // Check for many small operations
+            if self.gas_tracker.operation_count > 100 && self.gas_tracker.average_operation_gas < 10000 {
+                recommendations.push("Operations are efficient but consider consolidating related operations".to_string());
+            }
+            
+            // Check for inconsistent gas usage
+            if self.gas_tracker.max_gas_used > self.gas_tracker.min_gas_used * 10 {
+                recommendations.push("Gas usage varies significantly - review operation patterns".to_string());
+            }
+            
+            // General recommendations
+            recommendations.push("Use batch operations for multiple property transfers".to_string());
+            recommendations.push("Prefer portfolio analytics over individual property queries".to_string());
+            recommendations.push("Consider off-chain indexing for complex analytics".to_string());
+            
+            recommendations
+        }
     }
 
     #[cfg(kani)]
