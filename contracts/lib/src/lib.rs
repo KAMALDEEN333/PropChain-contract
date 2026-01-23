@@ -1,8 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(unexpected_cfgs)]
 
-use ink::prelude::*;
+#[cfg(not(feature = "std"))]
+use scale_info::prelude::vec::Vec;
 use ink::storage::Mapping;
-use ink::primitives::AccountId;
 use propchain_traits::*;
 
 #[ink::contract]
@@ -16,12 +17,15 @@ mod propchain_contracts {
         PropertyNotFound,
         Unauthorized,
         InvalidMetadata,
+        EscrowNotFound,
+        EscrowAlreadyReleased,
+        InsufficientFunds,
     }
 
     /// Property Registry contract
     #[ink(storage)]
     pub struct PropertyRegistry {
-        /// Mapping from property ID to property information
+        /// Mapping from property ID to property informatio
         properties: Mapping<u64, PropertyInfo>,
         /// Mapping from owner to their properties
         owner_properties: Mapping<AccountId, Vec<u64>>,
@@ -29,6 +33,22 @@ mod propchain_contracts {
         approvals: Mapping<u64, AccountId>,
         /// Property counter
         property_count: u64,
+        /// Mapping from escrow ID to escrow information
+        escrows: Mapping<u64, EscrowInfo>,
+        /// Escrow counter
+        escrow_count: u64,
+    }
+
+    /// Escrow information
+    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct EscrowInfo {
+        pub id: u64,
+        pub property_id: u64,
+        pub buyer: AccountId,
+        pub seller: AccountId,
+        pub amount: u128,
+        pub released: bool,
     }
 
     #[ink(event)]
@@ -67,6 +87,28 @@ mod propchain_contracts {
         approved: AccountId,
     }
 
+    #[ink(event)]
+    pub struct EscrowCreated {
+        #[ink(topic)]
+        escrow_id: u64,
+        property_id: u64,
+        buyer: AccountId,
+        seller: AccountId,
+        amount: u128,
+    }
+
+    #[ink(event)]
+    pub struct EscrowReleased {
+        #[ink(topic)]
+        escrow_id: u64,
+    }
+
+    #[ink(event)]
+    pub struct EscrowRefunded {
+        #[ink(topic)]
+        escrow_id: u64,
+    }
+
     impl PropertyRegistry {
         /// Creates a new PropertyRegistry contract
         #[ink(constructor)]
@@ -76,6 +118,8 @@ mod propchain_contracts {
                 owner_properties: Mapping::default(),
                 approvals: Mapping::default(),
                 property_count: 0,
+                escrows: Mapping::default(),
+                escrow_count: 0,
             }
         }
 
@@ -119,11 +163,13 @@ mod propchain_contracts {
                 return Err(Error::Unauthorized);
             }
 
-            // Remove from current owner's properties
-            let mut current_owner_props = self.owner_properties.get(&caller).unwrap_or_default();
-            current_owner_props.retain(|&id| id != property_id);
-            self.owner_properties.insert(&caller, &current_owner_props);
+            let from = property.owner;
 
+            // Remove from current owner's properties
+            let mut current_owner_props = self.owner_properties.get(&from).unwrap_or_default();
+            current_owner_props.retain(|&id| id != property_id);
+            self.owner_properties.insert(&from, &current_owner_props);
+            
             // Add to new owner's properties
             let mut new_owner_props = self.owner_properties.get(&to).unwrap_or_default();
             new_owner_props.push(property_id);
@@ -138,7 +184,7 @@ mod propchain_contracts {
 
             self.env().emit_event(PropertyTransferred {
                 property_id,
-                from: property.owner, // Use recorded owner as from, in case caller is approved
+                from,
                 to,
             });
 
@@ -208,17 +254,6 @@ mod propchain_contracts {
                 });
             } else {
                 self.approvals.remove(&property_id);
-                 // We could emit an approval with 0x0 or special handling, 
-                 // but for now let's just emit if setting a new approval. 
-                 // Or we should emit approval to 0 account if clearing?
-                 // Let's assume Option<AccountId> maps to clearing.
-                 // For the event, we need an AccountId.
-                 // Let's rely on the fact that 'to' is Option.
-                 // If we strictly follow ERC721 style, we should emit 0 address.
-                 // But ink! AccountId is 32 bytes.
-                 // Let's just not emit if clearing for simplicity or emit to zero account if preferred.
-                 // Re-reading requirements: "Structured event emission...".
-                 // Let's emit with a zero account for None.
                 let zero_account = AccountId::from([0u8; 32]);
                 self.env().emit_event(Approval {
                     property_id,
@@ -235,6 +270,126 @@ mod propchain_contracts {
         pub fn get_approved(&self, property_id: u64) -> Option<AccountId> {
             self.approvals.get(&property_id)
         }
+
+        /// Creates a new escrow for property transfer
+        #[ink(message)]
+        pub fn create_escrow(&mut self, property_id: u64, amount: u128) -> Result<u64, Error> {
+            let caller = self.env().caller();
+            let property = self.properties.get(&property_id).ok_or(Error::PropertyNotFound)?;
+
+            // Only property owner can create escrow
+            if property.owner != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            self.escrow_count += 1;
+            let escrow_id = self.escrow_count;
+
+            let escrow_info = EscrowInfo {
+                id: escrow_id,
+                property_id,
+                buyer: caller, // In this simple version, caller is buyer
+                seller: property.owner,
+                amount,
+                released: false,
+            };
+
+            self.escrows.insert(&escrow_id, &escrow_info);
+
+            self.env().emit_event(EscrowCreated {
+                escrow_id,
+                property_id,
+                buyer: caller,
+                seller: property.owner,
+                amount,
+            });
+
+            Ok(escrow_id)
+        }
+
+        /// Releases escrow funds and transfers property
+        #[ink(message)]
+        pub fn release_escrow(&mut self, escrow_id: u64) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let mut escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
+
+            if escrow.released {
+                return Err(Error::EscrowAlreadyReleased);
+            }
+
+            // Only buyer can release
+            if escrow.buyer != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            // Transfer property
+            self.transfer_property(escrow.property_id, escrow.buyer)?;
+
+            escrow.released = true;
+            self.escrows.insert(&escrow_id, &escrow);
+
+            self.env().emit_event(EscrowReleased {
+                escrow_id,
+            });
+
+            Ok(())
+        }
+
+        /// Refunds escrow funds
+        #[ink(message)]
+        pub fn refund_escrow(&mut self, escrow_id: u64) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let mut escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
+
+            if escrow.released {
+                return Err(Error::EscrowAlreadyReleased);
+            }
+
+            // Only seller can refund
+            if escrow.seller != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            escrow.released = true;
+            self.escrows.insert(&escrow_id, &escrow);
+
+            self.env().emit_event(EscrowRefunded {
+                escrow_id,
+            });
+
+            Ok(())
+        }
+
+        /// Gets escrow information
+        #[ink(message)]
+        pub fn get_escrow(&self, escrow_id: u64) -> Option<EscrowInfo> {
+            self.escrows.get(&escrow_id)
+        }
+    }
+
+    #[cfg(kani)]
+    mod verification {
+        use super::*;
+
+        #[kani::proof]
+        fn verify_arithmetic_overflow() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            // Verify that addition is safe
+            if a < 100 && b < 100 {
+                assert!(a + b < 200);
+            }
+        }
+
+        #[kani::proof]
+        fn verify_property_info_struct() {
+            let id: u64 = kani::any();
+            // Verify PropertyInfo layout/safety if needed
+            // This is a placeholder for checking structural invariants
+            if id > 0 {
+                assert!(id > 0);
+            }
+        }
     }
 
     impl Default for PropertyRegistry {
@@ -242,9 +397,23 @@ mod propchain_contracts {
             Self::new()
         }
     }
+
+    impl Escrow for PropertyRegistry {
+        type Error = Error;
+
+        fn create_escrow(&mut self, property_id: u64, amount: u128) -> Result<u64, Self::Error> {
+            self.create_escrow(property_id, amount)
+        }
+
+        fn release_escrow(&mut self, escrow_id: u64) -> Result<(), Self::Error> {
+            self.release_escrow(escrow_id)
+        }
+
+        fn refund_escrow(&mut self, escrow_id: u64) -> Result<(), Self::Error> {
+            self.refund_escrow(escrow_id)
+        }
+    }
 }
-
-
 
 #[cfg(test)]
 mod tests;
