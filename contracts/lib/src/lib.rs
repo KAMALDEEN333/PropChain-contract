@@ -1,8 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use ink::prelude::*;
+use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
-use ink::primitives::AccountId;
 use propchain_traits::*;
 
 #[ink::contract]
