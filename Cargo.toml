@@ -2,7 +2,8 @@
 members = [
     "contracts/lib",
     "contracts/traits",
-    "contracts/compliance_registry",
+    "contracts/proxy",
+    "security-audit",
 ]
 resolver = "2"
 
