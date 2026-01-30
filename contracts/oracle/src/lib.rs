@@ -1,14 +1,19 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std, no_main)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 
 use ink::prelude::*;
 use ink::storage::Mapping;
-use ink::primitives::AccountId;
 use propchain_traits::*;
 
 /// Property Valuation Oracle Contract
 #[ink::contract]
 mod propchain_oracle {
     use super::*;
+    use ink::prelude::{string::{String, ToString}, vec::Vec};
 
     /// Error types for the Property Valuation Oracle
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
@@ -319,7 +324,7 @@ mod propchain_oracle {
             Ok(prices)
         }
 
-        fn get_price_from_source(&self, source: &OracleSource, property_id: u64) -> Result<PriceData, OracleError> {
+        fn get_price_from_source(&self, source: &OracleSource, _property_id: u64) -> Result<PriceData, OracleError> {
             // This is a placeholder for actual price feed integration
             // In production, this would call Chainlink, Pyth, or other oracles
             match source.source_type {
@@ -507,7 +512,7 @@ mod propchain_oracle {
             ))
         }
 
-        fn detect_outliers(&self, property_id: u64) -> Result<u32, OracleError> {
+        fn detect_outliers(&self, _property_id: u64) -> Result<u32, OracleError> {
             // This would implement outlier detection logic
             // For now, return 0
             Ok(0)
