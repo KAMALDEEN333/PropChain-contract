@@ -5,6 +5,9 @@ use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
 use propchain_traits::*;
 
+// Re-export traits
+pub use propchain_traits::*;
+
 #[ink::contract]
 mod propchain_contracts {
     use super::*;
@@ -27,6 +30,7 @@ mod propchain_contracts {
         AppealNotFound,
         InvalidAppealStatus,
         ComplianceRegistryNotSet,
+        OracleError,
     }
 
     /// Property Registry contract
@@ -2117,6 +2121,7 @@ mod propchain_contracts {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests;
