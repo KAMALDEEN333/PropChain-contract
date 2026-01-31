@@ -59,7 +59,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Audit { report } => {
             println!("{}", "Starting Security Audit Pipeline...".blue().bold());
-            
+
             let mut audit_report = SecurityReport {
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 ..Default::default()
@@ -68,10 +68,15 @@ fn main() -> Result<()> {
             // 1. Static Analysis (Clippy)
             println!("{}", "Running Static Analysis (Clippy)...".yellow());
             let clippy_output = Command::new("cargo")
-                .args(["clippy", "--message-format=json", "--all-targets", "--all-features"])
+                .args([
+                    "clippy",
+                    "--message-format=json",
+                    "--all-targets",
+                    "--all-features",
+                ])
                 .output()
                 .context("Failed to run cargo clippy")?;
-            
+
             // Parse clippy output (simplified)
             let output_str = String::from_utf8_lossy(&clippy_output.stdout);
             for line in output_str.lines() {
@@ -80,16 +85,23 @@ fn main() -> Result<()> {
                         match level {
                             "warning" => {
                                 audit_report.static_analysis.clippy_warnings += 1;
-                                if let Some(message) = json.get("message").and_then(|m| m.as_object()) {
-                                    if let Some(code) = message.get("code").and_then(|c| c.as_object()) {
-                                        if let Some(code_str) = code.get("code").and_then(|s| s.as_str()) {
+                                if let Some(message) =
+                                    json.get("message").and_then(|m| m.as_object())
+                                {
+                                    if let Some(code) =
+                                        message.get("code").and_then(|c| c.as_object())
+                                    {
+                                        if let Some(code_str) =
+                                            code.get("code").and_then(|s| s.as_str())
+                                        {
                                             if code_str.contains("complexity") {
-                                                audit_report.static_analysis.complexity_warnings += 1;
+                                                audit_report.static_analysis.complexity_warnings +=
+                                                    1;
                                             }
                                         }
                                     }
                                 }
-                            },
+                            }
                             "error" => audit_report.static_analysis.clippy_errors += 1,
                             _ => {}
                         }
@@ -100,36 +112,43 @@ fn main() -> Result<()> {
             // 2. Custom Linter (Unsafe & TODOs)
             println!("{}", "Running Custom Rust Security Linters...".yellow());
             for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "rs") {
+                if entry.path().extension().is_some_and(|ext| ext == "rs") {
                     audit_report.code_quality.files_scanned += 1;
                     let content = fs::read_to_string(entry.path()).unwrap_or_default();
-                    
-                    audit_report.static_analysis.unsafe_blocks += content.matches("unsafe {").count();
+
+                    audit_report.static_analysis.unsafe_blocks +=
+                        content.matches("unsafe {").count();
                     audit_report.static_analysis.todos_found += content.matches("TODO").count();
                     audit_report.static_analysis.todos_found += content.matches("FIXME").count();
                 }
             }
 
             // 3. Dependency Scan (cargo audit)
-            println!("{}", "Running Dependency Vulnerability Scanning...".yellow());
+            println!(
+                "{}",
+                "Running Dependency Vulnerability Scanning...".yellow()
+            );
             // Check if cargo-audit is installed
-            if Command::new("cargo").args(["audit", "--version"]).output().is_ok() {
-                let audit_cmd = Command::new("cargo")
-                    .args(["audit", "--json"])
-                    .output();
-                
+            if Command::new("cargo")
+                .args(["audit", "--version"])
+                .output()
+                .is_ok()
+            {
+                let audit_cmd = Command::new("cargo").args(["audit", "--json"]).output();
+
                 if let Ok(output) = audit_cmd {
                     let output_str = String::from_utf8_lossy(&output.stdout);
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output_str) {
-                         if let Some(vulns) = json.get("vulnerabilities").and_then(|v| v.as_object()) {
-                             if let Some(list) = vulns.get("list").and_then(|l| l.as_array()) {
-                                 audit_report.dependency_scan.vulnerabilities = list.len();
-                             }
-                         }
-                         if let Some(warnings) = json.get("warnings").and_then(|w| w.as_object()) {
+                        if let Some(vulns) = json.get("vulnerabilities").and_then(|v| v.as_object())
+                        {
+                            if let Some(list) = vulns.get("list").and_then(|l| l.as_array()) {
+                                audit_report.dependency_scan.vulnerabilities = list.len();
+                            }
+                        }
+                        if let Some(warnings) = json.get("warnings").and_then(|w| w.as_object()) {
                             // Count warnings if structure matches, otherwise simplified
-                             audit_report.dependency_scan.warnings = warnings.len();
-                         }
+                            audit_report.dependency_scan.warnings = warnings.len();
+                        }
                     }
                 } else {
                     println!("{}", "cargo audit failed to run".red());
@@ -142,21 +161,30 @@ fn main() -> Result<()> {
             let mut score: u32 = 100;
             score = score.saturating_sub((audit_report.static_analysis.clippy_errors * 10) as u32);
             score = score.saturating_sub((audit_report.static_analysis.clippy_warnings * 2) as u32);
-            score = score.saturating_sub((audit_report.static_analysis.complexity_warnings * 5) as u32);
+            score =
+                score.saturating_sub((audit_report.static_analysis.complexity_warnings * 5) as u32);
             score = score.saturating_sub((audit_report.static_analysis.unsafe_blocks * 5) as u32);
-            score = score.saturating_sub((audit_report.dependency_scan.vulnerabilities * 20) as u32);
-            
+            score =
+                score.saturating_sub((audit_report.dependency_scan.vulnerabilities * 20) as u32);
+
             audit_report.score = score;
 
             println!("{}", "Audit Complete!".green().bold());
             println!("Security Score: {}/100", score);
-            println!("Clippy Issues: {} errors, {} warnings ({} complexity)", 
-                audit_report.static_analysis.clippy_errors, 
+            println!(
+                "Clippy Issues: {} errors, {} warnings ({} complexity)",
+                audit_report.static_analysis.clippy_errors,
                 audit_report.static_analysis.clippy_warnings,
                 audit_report.static_analysis.complexity_warnings
             );
-            println!("Unsafe Blocks: {}", audit_report.static_analysis.unsafe_blocks);
-            println!("Vulnerabilities: {}", audit_report.dependency_scan.vulnerabilities);
+            println!(
+                "Unsafe Blocks: {}",
+                audit_report.static_analysis.unsafe_blocks
+            );
+            println!(
+                "Vulnerabilities: {}",
+                audit_report.dependency_scan.vulnerabilities
+            );
 
             if let Some(path) = report {
                 let report_json = serde_json::to_string_pretty(&audit_report)?;

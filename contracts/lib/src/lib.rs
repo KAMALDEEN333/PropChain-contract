@@ -1,9 +1,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(unexpected_cfgs)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::enum_variant_names)]
 
+use ink::prelude::string::String;
 use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
-use propchain_traits::*;
 
 // Re-export traits
 pub use propchain_traits::*;
@@ -31,6 +33,14 @@ mod propchain_contracts {
         InvalidAppealStatus,
         ComplianceRegistryNotSet,
         OracleError,
+        ContractPaused,
+        AlreadyPaused,
+        NotPaused,
+        ResumeRequestAlreadyActive,
+        ResumeRequestNotFound,
+        InsufficientApprovals,
+        AlreadyApproved,
+        NotAuthorizedToPause,
     }
 
     /// Property Registry contract
@@ -70,6 +80,10 @@ mod propchain_contracts {
         appeals: Mapping<u64, Appeal>,
         /// Appeal counter
         appeal_count: u64,
+        /// Pause configuration and state
+        pause_info: PauseInfo,
+        /// Accounts authorized to pause the contract
+        pause_guardians: Mapping<AccountId, bool>,
     }
 
     /// Escrow information
@@ -267,6 +281,25 @@ mod propchain_contracts {
         Pending,
         Approved,
         Rejected,
+    }
+
+    /// Pause information
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct PauseInfo {
+        pub paused: bool,
+        pub paused_at: Option<u64>,
+        pub paused_by: Option<AccountId>,
+        pub reason: Option<String>,
+        pub auto_resume_at: Option<u64>,
+
+        // For Resume Process
+        pub resume_request_active: bool,
+        pub resume_requester: Option<AccountId>,
+        pub resume_approvals: Vec<AccountId>,
+        pub required_approvals: u32,
     }
 
     // ============================================================================
@@ -641,6 +674,53 @@ mod propchain_contracts {
         transaction_hash: Hash,
     }
 
+    /// Event emitted when contract is paused
+    #[ink(event)]
+    pub struct ContractPaused {
+        #[ink(topic)]
+        by: AccountId,
+        #[ink(topic)]
+        reason: String,
+        timestamp: u64,
+        auto_resume_at: Option<u64>,
+    }
+
+    /// Event emitted when a resume is requested
+    #[ink(event)]
+    pub struct ResumeRequested {
+        #[ink(topic)]
+        requester: AccountId,
+        timestamp: u64,
+    }
+
+    /// Event emitted when a resume request is approved
+    #[ink(event)]
+    pub struct ResumeApproved {
+        #[ink(topic)]
+        approver: AccountId,
+        current_approvals: u32,
+        required_approvals: u32,
+        timestamp: u64,
+    }
+
+    /// Event emitted when contract is resumed
+    #[ink(event)]
+    pub struct ContractResumed {
+        #[ink(topic)]
+        by: AccountId,
+        timestamp: u64,
+    }
+
+    /// Event emitted when a pause guardian is updated
+    #[ink(event)]
+    pub struct PauseGuardianUpdated {
+        #[ink(topic)]
+        guardian: AccountId,
+        #[ink(topic)]
+        is_guardian: bool,
+        updated_by: AccountId,
+    }
+
     impl PropertyRegistry {
         /// Creates a new PropertyRegistry contract
         #[ink(constructor)]
@@ -673,6 +753,18 @@ mod propchain_contracts {
                 verification_count: 0,
                 appeals: Mapping::default(),
                 appeal_count: 0,
+                pause_info: PauseInfo {
+                    paused: false,
+                    paused_at: None,
+                    paused_by: None,
+                    reason: None,
+                    auto_resume_at: None,
+                    resume_request_active: false,
+                    resume_requester: None,
+                    resume_approvals: Vec::new(),
+                    required_approvals: 2, // Default requirement
+                },
+                pause_guardians: Mapping::default(),
             };
 
             // Emit contract initialization event
@@ -774,10 +866,220 @@ mod propchain_contracts {
             Ok(())
         }
 
+        /// Helper to check if contract is paused
+        pub fn ensure_not_paused(&self) -> Result<(), Error> {
+            if self.pause_info.paused {
+                // Check for auto-resume
+                if let Some(resume_time) = self.pause_info.auto_resume_at {
+                    if self.env().block_timestamp() >= resume_time {
+                        // In a real scenario we might want to auto-resume here or require a trigger.
+                        // For safety, we usually require explicit resume even if time passed,
+                        // purely to update the state, OR we treat it as not paused.
+                        // However, since state mutability is needed to update 'paused' flag,
+                        // and this is a read-only check often, we'll return Error::ContractPaused
+                        // unless someone triggers the resume.
+                        // But requirements say "Time-based automatic resume".
+                        // Use a separate method or assume logic handles it.
+                        // For strict safety:
+                        return Err(Error::ContractPaused);
+                    }
+                }
+                return Err(Error::ContractPaused);
+            }
+            Ok(())
+        }
+
+        // --- Pause/Resume Functionality ---
+
+        /// Pauses the contract. Can be called by admin or pause guardians.
+        #[ink(message)]
+        pub fn pause_contract(
+            &mut self,
+            reason: String,
+            duration_seconds: Option<u64>,
+        ) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let is_admin = caller == self.admin;
+            let is_guardian = self.pause_guardians.get(caller).unwrap_or(false);
+
+            if !is_admin && !is_guardian {
+                return Err(Error::NotAuthorizedToPause);
+            }
+
+            if self.pause_info.paused {
+                return Err(Error::AlreadyPaused);
+            }
+
+            let timestamp = self.env().block_timestamp();
+            let auto_resume_at = duration_seconds.map(|d| timestamp + d);
+
+            self.pause_info.paused = true;
+            self.pause_info.paused_at = Some(timestamp);
+            self.pause_info.paused_by = Some(caller);
+            self.pause_info.reason = Some(reason.clone());
+            self.pause_info.auto_resume_at = auto_resume_at;
+
+            // Clear any previous resume requests
+            self.pause_info.resume_request_active = false;
+            self.pause_info.resume_approvals.clear();
+
+            self.env().emit_event(ContractPaused {
+                by: caller,
+                reason,
+                timestamp,
+                auto_resume_at,
+            });
+
+            Ok(())
+        }
+
+        /// Emergency pause - same as pause but implies critical severity
+        #[ink(message)]
+        pub fn emergency_pause(&mut self, reason: String) -> Result<(), Error> {
+            self.pause_contract(reason, None)
+        }
+
+        /// Provide a mechanism to try auto-resume if time passed
+        #[ink(message)]
+        pub fn try_auto_resume(&mut self) -> Result<(), Error> {
+            if !self.pause_info.paused {
+                return Err(Error::NotPaused);
+            }
+
+            if let Some(resume_time) = self.pause_info.auto_resume_at {
+                if self.env().block_timestamp() >= resume_time {
+                    self.pause_info.paused = false;
+                    self.pause_info.reason = None;
+
+                    self.env().emit_event(ContractResumed {
+                        by: self.env().caller(), // triggered by
+                        timestamp: self.env().block_timestamp(),
+                    });
+                    return Ok(());
+                }
+            }
+            Err(Error::ContractPaused)
+        }
+
+        /// Request to resume the contract. Requires multi-sig approval.
+        #[ink(message)]
+        pub fn request_resume(&mut self) -> Result<(), Error> {
+            let caller = self.env().caller();
+            // Only admin or guardians can request resume
+            let is_admin = caller == self.admin;
+            let is_guardian = self.pause_guardians.get(caller).unwrap_or(false);
+
+            if !is_admin && !is_guardian {
+                return Err(Error::Unauthorized);
+            }
+
+            if !self.pause_info.paused {
+                return Err(Error::NotPaused);
+            }
+
+            if self.pause_info.resume_request_active {
+                return Err(Error::ResumeRequestAlreadyActive);
+            }
+
+            self.pause_info.resume_request_active = true;
+            self.pause_info.resume_requester = Some(caller);
+            self.pause_info.resume_approvals.clear();
+            // Auto-approve by requester? Usually yes, let's say yes.
+            self.pause_info.resume_approvals.push(caller);
+
+            self.env().emit_event(ResumeRequested {
+                requester: caller,
+                timestamp: self.env().block_timestamp(),
+            });
+
+            // If only 1 approval required (e.g. dev mode), check immediately
+            if self.pause_info.required_approvals <= 1 {
+                self._execute_resume()?;
+            }
+
+            Ok(())
+        }
+
+        /// Approve the pending resume request
+        #[ink(message)]
+        pub fn approve_resume(&mut self) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let is_admin = caller == self.admin;
+            let is_guardian = self.pause_guardians.get(caller).unwrap_or(false);
+
+            if !is_admin && !is_guardian {
+                return Err(Error::Unauthorized);
+            }
+
+            if !self.pause_info.resume_request_active {
+                return Err(Error::ResumeRequestNotFound);
+            }
+
+            if self.pause_info.resume_approvals.contains(&caller) {
+                return Err(Error::AlreadyApproved);
+            }
+
+            self.pause_info.resume_approvals.push(caller);
+
+            let approvals_count = self.pause_info.resume_approvals.len() as u32;
+
+            self.env().emit_event(ResumeApproved {
+                approver: caller,
+                current_approvals: approvals_count,
+                required_approvals: self.pause_info.required_approvals,
+                timestamp: self.env().block_timestamp(),
+            });
+
+            if approvals_count >= self.pause_info.required_approvals {
+                self._execute_resume()?;
+            }
+
+            Ok(())
+        }
+
+        fn _execute_resume(&mut self) -> Result<(), Error> {
+            self.pause_info.paused = false;
+            self.pause_info.resume_request_active = false;
+            self.pause_info.reason = None;
+
+            self.env().emit_event(ContractResumed {
+                by: self.env().caller(),
+                timestamp: self.env().block_timestamp(),
+            });
+            Ok(())
+        }
+
+        /// Manage pause guardians
+        #[ink(message)]
+        pub fn set_pause_guardian(
+            &mut self,
+            guardian: AccountId,
+            is_enabled: bool,
+        ) -> Result<(), Error> {
+            if self.env().caller() != self.admin {
+                return Err(Error::Unauthorized);
+            }
+            self.pause_guardians.insert(guardian, &is_enabled);
+
+            self.env().emit_event(PauseGuardianUpdated {
+                guardian,
+                is_guardian: is_enabled,
+                updated_by: self.env().caller(),
+            });
+            Ok(())
+        }
+
+        /// Get pause state
+        #[ink(message)]
+        pub fn get_pause_state(&self) -> PauseInfo {
+            self.pause_info.clone()
+        }
+
         /// Registers a new property
         /// Optionally checks compliance if compliance registry is set
         #[ink(message)]
         pub fn register_property(&mut self, metadata: PropertyMetadata) -> Result<u64, Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Check compliance for property registration (optional but recommended)
@@ -793,13 +1095,13 @@ mod propchain_contracts {
                 registered_at: self.env().block_timestamp(),
             };
 
-            self.properties.insert(&property_id, &property_info);
+            self.properties.insert(property_id, &property_info);
             // Optimized: Also store reverse mapping for faster owner lookups
-            self.property_owners.insert(&property_id, &caller);
+            self.property_owners.insert(property_id, &caller);
 
-            let mut owner_props = self.owner_properties.get(&caller).unwrap_or_default();
+            let mut owner_props = self.owner_properties.get(caller).unwrap_or_default();
             owner_props.push(property_id);
-            self.owner_properties.insert(&caller, &owner_props);
+            self.owner_properties.insert(caller, &owner_props);
 
             // Track gas usage
             self.track_gas_usage("register_property".as_bytes());
@@ -826,13 +1128,14 @@ mod propchain_contracts {
         /// Requires recipient to be compliant if compliance registry is set
         #[ink(message)]
         pub fn transfer_property(&mut self, property_id: u64, to: AccountId) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let mut property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
-            let approved = self.approvals.get(&property_id);
+            let approved = self.approvals.get(property_id);
             if property.owner != caller && Some(caller) != approved {
                 return Err(Error::Unauthorized);
             }
@@ -843,23 +1146,23 @@ mod propchain_contracts {
             let from = property.owner;
 
             // Remove from current owner's properties
-            let mut current_owner_props = self.owner_properties.get(&from).unwrap_or_default();
+            let mut current_owner_props = self.owner_properties.get(from).unwrap_or_default();
             current_owner_props.retain(|&id| id != property_id);
-            self.owner_properties.insert(&from, &current_owner_props);
+            self.owner_properties.insert(from, &current_owner_props);
 
             // Add to new owner's properties
-            let mut new_owner_props = self.owner_properties.get(&to).unwrap_or_default();
+            let mut new_owner_props = self.owner_properties.get(to).unwrap_or_default();
             new_owner_props.push(property_id);
-            self.owner_properties.insert(&to, &new_owner_props);
+            self.owner_properties.insert(to, &new_owner_props);
 
             // Update property owner
             property.owner = to;
-            self.properties.insert(&property_id, &property);
+            self.properties.insert(property_id, &property);
             // Optimized: Update reverse mapping
-            self.property_owners.insert(&property_id, &to);
+            self.property_owners.insert(property_id, &to);
 
             // Clear approval
-            self.approvals.remove(&property_id);
+            self.approvals.remove(property_id);
 
             // Track gas usage
             self.track_gas_usage("transfer_property".as_bytes());
@@ -884,13 +1187,13 @@ mod propchain_contracts {
         /// Gets property information
         #[ink(message)]
         pub fn get_property(&self, property_id: u64) -> Option<PropertyInfo> {
-            self.properties.get(&property_id)
+            self.properties.get(property_id)
         }
 
         /// Gets properties owned by an account
         #[ink(message)]
         pub fn get_owner_properties(&self, owner: AccountId) -> Vec<u64> {
-            self.owner_properties.get(&owner).unwrap_or_default()
+            self.owner_properties.get(owner).unwrap_or_default()
         }
 
         /// Gets total property count
@@ -906,10 +1209,11 @@ mod propchain_contracts {
             property_id: u64,
             metadata: PropertyMetadata,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let mut property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
             if property.owner != caller {
@@ -926,7 +1230,7 @@ mod propchain_contracts {
             let old_valuation = property.metadata.valuation;
 
             property.metadata = metadata.clone();
-            self.properties.insert(&property_id, &property);
+            self.properties.insert(property_id, &property);
 
             // Emit enhanced metadata update event
 
@@ -953,6 +1257,7 @@ mod propchain_contracts {
             &mut self,
             properties: Vec<PropertyMetadata>,
         ) -> Result<Vec<u64>, Error> {
+            self.ensure_not_paused()?;
             let mut results = Vec::new();
             let caller = self.env().caller();
 
@@ -962,7 +1267,7 @@ mod propchain_contracts {
             self.property_count = end_id;
 
             // Get existing owner properties to avoid repeated storage reads
-            let mut owner_props = self.owner_properties.get(&caller).unwrap_or_default();
+            let mut owner_props = self.owner_properties.get(caller).unwrap_or_default();
 
             for (i, metadata) in properties.into_iter().enumerate() {
                 let property_id = start_id + i as u64;
@@ -974,14 +1279,14 @@ mod propchain_contracts {
                     registered_at: self.env().block_timestamp(),
                 };
 
-                self.properties.insert(&property_id, &property_info);
+                self.properties.insert(property_id, &property_info);
                 owner_props.push(property_id);
 
                 results.push(property_id);
             }
 
             // Update owner properties once at the end
-            self.owner_properties.insert(&caller, &owner_props);
+            self.owner_properties.insert(caller, &owner_props);
 
             // Emit enhanced batch registration event
 
@@ -1009,16 +1314,17 @@ mod propchain_contracts {
             property_ids: Vec<u64>,
             to: AccountId,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Validate all properties first to avoid partial transfers
             for &property_id in &property_ids {
                 let property = self
                     .properties
-                    .get(&property_id)
+                    .get(property_id)
                     .ok_or(Error::PropertyNotFound)?;
 
-                let approved = self.approvals.get(&property_id);
+                let approved = self.approvals.get(property_id);
                 if property.owner != caller && Some(caller) != approved {
                     return Err(Error::Unauthorized);
                 }
@@ -1028,7 +1334,7 @@ mod propchain_contracts {
             let from = if !property_ids.is_empty() {
                 let first_property = self
                     .properties
-                    .get(&property_ids[0])
+                    .get(property_ids[0])
                     .ok_or(Error::PropertyNotFound)?;
                 first_property.owner
             } else {
@@ -1045,15 +1351,15 @@ mod propchain_contracts {
 
                 // Remove from current owner's properties
                 let mut current_owner_props =
-                    self.owner_properties.get(&current_from).unwrap_or_default();
+                    self.owner_properties.get(current_from).unwrap_or_default();
                 current_owner_props.retain(|&id| id != *property_id);
                 self.owner_properties
-                    .insert(&current_from, &current_owner_props);
+                    .insert(current_from, &current_owner_props);
 
                 // Add to new owner's properties
-                let mut new_owner_props = self.owner_properties.get(&to).unwrap_or_default();
+                let mut new_owner_props = self.owner_properties.get(to).unwrap_or_default();
                 new_owner_props.push(*property_id);
-                self.owner_properties.insert(&to, &new_owner_props);
+                self.owner_properties.insert(to, &new_owner_props);
 
                 // Update property owner
                 property.owner = to;
@@ -1093,6 +1399,7 @@ mod propchain_contracts {
             &mut self,
             updates: Vec<(u64, PropertyMetadata)>,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Validate all properties first to avoid partial updates
@@ -1117,11 +1424,11 @@ mod propchain_contracts {
             for (property_id, metadata) in updates {
                 let mut property = self
                     .properties
-                    .get(&property_id)
+                    .get(property_id)
                     .ok_or(Error::PropertyNotFound)?;
 
                 property.metadata = metadata.clone();
-                self.properties.insert(&property_id, &property);
+                self.properties.insert(property_id, &property);
                 updated_property_ids.push(property_id);
             }
 
@@ -1153,6 +1460,7 @@ mod propchain_contracts {
             &mut self,
             transfers: Vec<(u64, AccountId)>,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Validate all properties first to avoid partial transfers
@@ -1178,9 +1486,9 @@ mod propchain_contracts {
                 let from = property.owner;
 
                 // Remove from current owner's properties
-                let mut current_owner_props = self.owner_properties.get(&from).unwrap_or_default();
+                let mut current_owner_props = self.owner_properties.get(from).unwrap_or_default();
                 current_owner_props.retain(|&id| id != *property_id);
-                self.owner_properties.insert(&from, &current_owner_props);
+                self.owner_properties.insert(from, &current_owner_props);
 
                 // Add to new owner's properties
                 let mut new_owner_props = self.owner_properties.get(to).unwrap_or_default();
@@ -1202,7 +1510,7 @@ mod propchain_contracts {
             if !transferred_property_ids.is_empty() {
                 let first_property = self
                     .properties
-                    .get(&transferred_property_ids[0])
+                    .get(transferred_property_ids[0])
                     .ok_or(Error::PropertyNotFound)?;
                 let from = first_property.owner;
 
@@ -1228,10 +1536,11 @@ mod propchain_contracts {
         /// Approves an account to transfer a specific property
         #[ink(message)]
         pub fn approve(&mut self, property_id: u64, to: Option<AccountId>) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
             if property.owner != caller {
@@ -1241,7 +1550,7 @@ mod propchain_contracts {
             let transaction_hash: Hash = [0u8; 32].into();
 
             if let Some(account) = to {
-                self.approvals.insert(&property_id, &account);
+                self.approvals.insert(property_id, &account);
                 // Emit enhanced approval granted event
                 self.env().emit_event(ApprovalGranted {
                     property_id,
@@ -1253,7 +1562,7 @@ mod propchain_contracts {
                     transaction_hash,
                 });
             } else {
-                self.approvals.remove(&property_id);
+                self.approvals.remove(property_id);
                 // Emit enhanced approval cleared event
                 self.env().emit_event(ApprovalCleared {
                     property_id,
@@ -1271,7 +1580,7 @@ mod propchain_contracts {
         /// Gets the approved account for a property
         #[ink(message)]
         pub fn get_approved(&self, property_id: u64) -> Option<AccountId> {
-            self.approvals.get(&property_id)
+            self.approvals.get(property_id)
         }
 
         /// Creates a new escrow for property transfer
@@ -1283,10 +1592,11 @@ mod propchain_contracts {
             buyer: AccountId,
             amount: u128,
         ) -> Result<u64, Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
             // Only property owner (seller) can create escrow
@@ -1306,7 +1616,7 @@ mod propchain_contracts {
                 released: false,
             };
 
-            self.escrows.insert(&escrow_id, &escrow_info);
+            self.escrows.insert(escrow_id, &escrow_info);
 
             // Emit enhanced escrow created event
 
@@ -1329,8 +1639,9 @@ mod propchain_contracts {
         /// Releases escrow funds and transfers property
         #[ink(message)]
         pub fn release_escrow(&mut self, escrow_id: u64) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
-            let mut escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
+            let mut escrow = self.escrows.get(escrow_id).ok_or(Error::EscrowNotFound)?;
 
             if escrow.released {
                 return Err(Error::EscrowAlreadyReleased);
@@ -1345,7 +1656,7 @@ mod propchain_contracts {
             self.transfer_property(escrow.property_id, escrow.buyer)?;
 
             escrow.released = true;
-            self.escrows.insert(&escrow_id, &escrow);
+            self.escrows.insert(escrow_id, &escrow);
 
             // Emit enhanced escrow released event
 
@@ -1368,8 +1679,9 @@ mod propchain_contracts {
         /// Refunds escrow funds
         #[ink(message)]
         pub fn refund_escrow(&mut self, escrow_id: u64) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
-            let mut escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
+            let mut escrow = self.escrows.get(escrow_id).ok_or(Error::EscrowNotFound)?;
 
             if escrow.released {
                 return Err(Error::EscrowAlreadyReleased);
@@ -1381,7 +1693,7 @@ mod propchain_contracts {
             }
 
             escrow.released = true;
-            self.escrows.insert(&escrow_id, &escrow);
+            self.escrows.insert(escrow_id, &escrow);
 
             // Emit enhanced escrow refunded event
 
@@ -1404,21 +1716,21 @@ mod propchain_contracts {
         /// Gets escrow information
         #[ink(message)]
         pub fn get_escrow(&self, escrow_id: u64) -> Option<EscrowInfo> {
-            self.escrows.get(&escrow_id)
+            self.escrows.get(escrow_id)
         }
 
         /// Portfolio Management: Gets summary statistics for properties owned by an account
         #[ink(message)]
         pub fn get_portfolio_summary(&self, owner: AccountId) -> PortfolioSummary {
-            let property_ids = self.owner_properties.get(&owner).unwrap_or_default();
+            let property_ids = self.owner_properties.get(owner).unwrap_or_default();
             let mut total_valuation = 0u128;
             let mut total_size = 0u64;
             let mut property_count = 0u64;
 
             // Optimized loop with iterator for better performance
-            let mut iter = property_ids.iter();
-            while let Some(&property_id) = iter.next() {
-                if let Some(property) = self.properties.get(&property_id) {
+            let iter = property_ids.iter();
+            for &property_id in iter {
+                if let Some(property) = self.properties.get(property_id) {
                     // Unrolled additions for better performance
                     total_valuation = total_valuation.wrapping_add(property.metadata.valuation);
                     total_size = total_size.wrapping_add(property.metadata.size);
@@ -1446,15 +1758,15 @@ mod propchain_contracts {
         /// Portfolio Management: Gets detailed portfolio information for an owner
         #[ink(message)]
         pub fn get_portfolio_details(&self, owner: AccountId) -> PortfolioDetails {
-            let property_ids = self.owner_properties.get(&owner).unwrap_or_default();
+            let property_ids = self.owner_properties.get(owner).unwrap_or_default();
             let mut properties = Vec::new();
 
             // Optimized loop with capacity pre-allocation
             properties.reserve(property_ids.len());
 
-            let mut iter = property_ids.iter();
-            while let Some(&property_id) = iter.next() {
-                if let Some(property) = self.properties.get(&property_id) {
+            let iter = property_ids.iter();
+            for &property_id in iter {
+                if let Some(property) = self.properties.get(property_id) {
                     // Direct construction to avoid intermediate allocations
                     let portfolio_property = PortfolioProperty {
                         id: property.id,
@@ -1487,7 +1799,7 @@ mod propchain_contracts {
             // Note: This is expensive for large datasets. Consider off-chain indexing.
             let mut i = 1u64;
             while i <= self.property_count {
-                if let Some(property) = self.properties.get(&i) {
+                if let Some(property) = self.properties.get(i) {
                     total_valuation += property.metadata.valuation;
                     total_size += property.metadata.size;
                     property_count += 1;
@@ -1526,7 +1838,7 @@ mod propchain_contracts {
             // Optimized loop with pre-check to reduce iterations
             let mut i = 1u64;
             while i <= self.property_count {
-                if let Some(property) = self.properties.get(&i) {
+                if let Some(property) = self.properties.get(i) {
                     // Unrolled condition check for better performance
                     let valuation = property.metadata.valuation;
                     if valuation >= min_price && valuation <= max_price {
@@ -1547,7 +1859,7 @@ mod propchain_contracts {
             // Optimized loop with pre-check to reduce iterations
             let mut i = 1u64;
             while i <= self.property_count {
-                if let Some(property) = self.properties.get(&i) {
+                if let Some(property) = self.properties.get(i) {
                     // Unrolled condition check for better performance
                     let size = property.metadata.size;
                     if size >= min_size && size <= max_size {
@@ -1650,7 +1962,7 @@ mod propchain_contracts {
                 return Err(Error::Unauthorized);
             }
 
-            self.badge_verifiers.insert(&verifier, &authorized);
+            self.badge_verifiers.insert(verifier, &authorized);
 
             // Emit verifier updated event
             let timestamp = self.env().block_timestamp();
@@ -1671,7 +1983,7 @@ mod propchain_contracts {
         /// Checks if an account is an authorized verifier
         #[ink(message)]
         pub fn is_verifier(&self, account: AccountId) -> bool {
-            self.badge_verifiers.get(&account).unwrap_or(false)
+            self.badge_verifiers.get(account).unwrap_or(false)
         }
 
         /// Issues a badge to a property (verifier only)
@@ -1683,6 +1995,7 @@ mod propchain_contracts {
             expires_at: Option<u64>,
             metadata_url: String,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Only verifiers can issue badges
@@ -1692,11 +2005,11 @@ mod propchain_contracts {
 
             // Check if property exists
             self.properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
             // Check if badge already exists and is not revoked
-            if let Some(existing_badge) = self.property_badges.get(&(property_id, badge_type)) {
+            if let Some(existing_badge) = self.property_badges.get((property_id, badge_type)) {
                 if !existing_badge.revoked {
                     return Err(Error::BadgeAlreadyIssued);
                 }
@@ -1714,7 +2027,7 @@ mod propchain_contracts {
             };
 
             self.property_badges
-                .insert(&(property_id, badge_type), &badge);
+                .insert((property_id, badge_type), &badge);
 
             // Emit badge issued event
             let timestamp = self.env().block_timestamp();
@@ -1742,6 +2055,7 @@ mod propchain_contracts {
             badge_type: BadgeType,
             reason: String,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             // Only verifiers or admin can revoke badges
@@ -1751,11 +2065,11 @@ mod propchain_contracts {
 
             let mut badge = self
                 .property_badges
-                .get(&(property_id, badge_type))
+                .get((property_id, badge_type))
                 .ok_or(Error::BadgeNotFound)?;
 
             if badge.revoked {
-                return Err(Error::BadgeNotFound); 
+                return Err(Error::BadgeNotFound);
             }
 
             badge.revoked = true;
@@ -1763,9 +2077,8 @@ mod propchain_contracts {
             badge.revocation_reason = reason.clone();
 
             self.property_badges
-                .insert(&(property_id, badge_type), &badge);
+                .insert((property_id, badge_type), &badge);
 
-     
             let timestamp = self.env().block_timestamp();
             let block_number = self.env().block_number();
             self.env().emit_event(BadgeRevoked {
@@ -1782,7 +2095,6 @@ mod propchain_contracts {
             Ok(())
         }
 
-      
         #[ink(message)]
         pub fn request_verification(
             &mut self,
@@ -1790,13 +2102,13 @@ mod propchain_contracts {
             badge_type: BadgeType,
             evidence_url: String,
         ) -> Result<u64, Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
-            
             if property.owner != caller {
                 return Err(Error::Unauthorized);
             }
@@ -1816,7 +2128,7 @@ mod propchain_contracts {
                 reviewed_at: None,
             };
 
-            self.verification_requests.insert(&request_id, &request);
+            self.verification_requests.insert(request_id, &request);
 
             // Emit verification requested event
             let timestamp = self.env().block_timestamp();
@@ -1836,7 +2148,6 @@ mod propchain_contracts {
             Ok(request_id)
         }
 
-      
         #[ink(message)]
         pub fn review_verification(
             &mut self,
@@ -1845,16 +2156,16 @@ mod propchain_contracts {
             expires_at: Option<u64>,
             metadata_url: String,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
-           
             if !self.is_verifier(caller) && caller != self.admin {
                 return Err(Error::NotVerifier);
             }
 
             let mut request = self
                 .verification_requests
-                .get(&request_id)
+                .get(request_id)
                 .ok_or(Error::BadgeNotFound)?;
 
             request.status = if approved {
@@ -1865,9 +2176,8 @@ mod propchain_contracts {
             request.reviewed_by = Some(caller);
             request.reviewed_at = Some(self.env().block_timestamp());
 
-            self.verification_requests.insert(&request_id, &request);
+            self.verification_requests.insert(request_id, &request);
 
-          
             if approved {
                 self.issue_badge(
                     request.property_id,
@@ -1877,7 +2187,6 @@ mod propchain_contracts {
                 )?;
             }
 
-          
             let timestamp = self.env().block_timestamp();
             let block_number = self.env().block_number();
             self.env().emit_event(VerificationReviewed {
@@ -1894,7 +2203,6 @@ mod propchain_contracts {
             Ok(())
         }
 
-      
         #[ink(message)]
         pub fn submit_appeal(
             &mut self,
@@ -1902,25 +2210,24 @@ mod propchain_contracts {
             badge_type: BadgeType,
             reason: String,
         ) -> Result<u64, Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
             let property = self
                 .properties
-                .get(&property_id)
+                .get(property_id)
                 .ok_or(Error::PropertyNotFound)?;
 
-          
             if property.owner != caller {
                 return Err(Error::Unauthorized);
             }
 
-          
             let badge = self
                 .property_badges
-                .get(&(property_id, badge_type))
+                .get((property_id, badge_type))
                 .ok_or(Error::BadgeNotFound)?;
 
             if !badge.revoked {
-                return Err(Error::InvalidAppealStatus); 
+                return Err(Error::InvalidAppealStatus);
             }
 
             self.appeal_count += 1;
@@ -1939,9 +2246,8 @@ mod propchain_contracts {
                 resolution: String::new(),
             };
 
-            self.appeals.insert(&appeal_id, &appeal);
+            self.appeals.insert(appeal_id, &appeal);
 
-          
             let timestamp = self.env().block_timestamp();
             let block_number = self.env().block_number();
             self.env().emit_event(AppealSubmitted {
@@ -1966,13 +2272,14 @@ mod propchain_contracts {
             approved: bool,
             resolution: String,
         ) -> Result<(), Error> {
+            self.ensure_not_paused()?;
             let caller = self.env().caller();
 
             if caller != self.admin {
                 return Err(Error::Unauthorized);
             }
 
-            let mut appeal = self.appeals.get(&appeal_id).ok_or(Error::AppealNotFound)?;
+            let mut appeal = self.appeals.get(appeal_id).ok_or(Error::AppealNotFound)?;
 
             appeal.status = if approved {
                 AppealStatus::Approved
@@ -1983,19 +2290,19 @@ mod propchain_contracts {
             appeal.resolved_at = Some(self.env().block_timestamp());
             appeal.resolution = resolution.clone();
 
-            self.appeals.insert(&appeal_id, &appeal);
+            self.appeals.insert(appeal_id, &appeal);
 
             // If approved, reinstate the badge
             if approved {
                 if let Some(mut badge) = self
                     .property_badges
-                    .get(&(appeal.property_id, appeal.badge_type))
+                    .get((appeal.property_id, appeal.badge_type))
                 {
                     badge.revoked = false;
                     badge.revoked_at = None;
                     badge.revocation_reason = String::new();
                     self.property_badges
-                        .insert(&(appeal.property_id, appeal.badge_type), &badge);
+                        .insert((appeal.property_id, appeal.badge_type), &badge);
                 }
             }
 
@@ -2031,7 +2338,7 @@ mod propchain_contracts {
             ];
 
             for badge_type in badge_types.iter() {
-                if let Some(badge) = self.property_badges.get(&(property_id, *badge_type)) {
+                if let Some(badge) = self.property_badges.get((property_id, *badge_type)) {
                     if !badge.revoked {
                         badges.push((*badge_type, badge));
                     }
@@ -2041,32 +2348,28 @@ mod propchain_contracts {
             badges
         }
 
-     
         #[ink(message)]
         pub fn has_badge(&self, property_id: u64, badge_type: BadgeType) -> bool {
-            if let Some(badge) = self.property_badges.get(&(property_id, badge_type)) {
+            if let Some(badge) = self.property_badges.get((property_id, badge_type)) {
                 !badge.revoked
             } else {
                 false
             }
         }
 
-      
         #[ink(message)]
         pub fn get_badge(&self, property_id: u64, badge_type: BadgeType) -> Option<Badge> {
-            self.property_badges.get(&(property_id, badge_type))
+            self.property_badges.get((property_id, badge_type))
         }
 
-      
         #[ink(message)]
         pub fn get_verification_request(&self, request_id: u64) -> Option<VerificationRequest> {
-            self.verification_requests.get(&request_id)
+            self.verification_requests.get(request_id)
         }
 
-      
         #[ink(message)]
         pub fn get_appeal(&self, appeal_id: u64) -> Option<Appeal> {
-            self.appeals.get(&appeal_id)
+            self.appeals.get(appeal_id)
         }
     }
 
@@ -2122,6 +2425,63 @@ mod propchain_contracts {
     }
 }
 
-
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_pause {
+    use super::propchain_contracts::{Error, PropertyRegistry};
+    use ink::primitives::AccountId;
+    use propchain_traits::PropertyMetadata;
+
+    #[ink::test]
+    fn test_pause_resume_flow() {
+        let mut contract = PropertyRegistry::new();
+        let _admin = AccountId::from([0x1; 32]);
+
+        // 1. Verify initial state
+        assert!(!contract.get_pause_state().paused);
+
+        // 2. Pause contract
+        assert!(contract
+            .pause_contract("Security breach".into(), None)
+            .is_ok());
+        contract.ensure_not_paused().expect_err("Should be paused");
+
+        // 3. Try to register property (should fail)
+        let metadata = PropertyMetadata {
+            location: "Test Loc".into(),
+            size: 100,
+            legal_description: "Test Description".into(),
+            valuation: 1000,
+            documents_url: "http://test.com".into(),
+        };
+        assert_eq!(
+            contract.register_property(metadata.clone()),
+            Err(Error::ContractPaused)
+        );
+
+        // 4. Request resume
+        assert!(contract.request_resume().is_ok());
+        let state = contract.get_pause_state();
+        assert!(state.resume_request_active);
+
+        // 5. Approve resume (admin already approved implicitly by requesting if we implemented it that way,
+        // but let's check approvals. In `request_resume` we pushed caller to approvals.
+        // `required_approvals` is 2 by default.
+        // We need another distinct account to approve.
+
+        // In simple unit testing here, tracking caller changes requires `ink::env::test::set_caller`.
+        // Let's simulate a second account approval.
+        let account2 = AccountId::from([0x2; 32]);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(contract.admin());
+        assert!(contract.set_pause_guardian(account2, true).is_ok());
+
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account2);
+        assert!(contract.approve_resume().is_ok());
+
+        // Now it should be resumed
+        assert!(!contract.get_pause_state().paused);
+        assert!(contract.ensure_not_paused().is_ok());
+    }
+}

@@ -1,8 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::too_many_arguments)]
 
+use ink::storage::Mapping;
 #[cfg(not(feature = "std"))]
 use scale_info::prelude::{string::String, vec::Vec};
-use ink::storage::Mapping;
 
 pub mod tests;
 
@@ -127,6 +129,9 @@ mod propchain_escrow {
         pub details: String,
     }
 
+    /// Type alias for signature key to reduce complexity
+    pub type SignatureKey = (u64, ApprovalType, AccountId);
+
     /// Main contract storage
     #[ink(storage)]
     pub struct AdvancedEscrow {
@@ -137,7 +142,7 @@ mod propchain_escrow {
         /// Multi-signature configurations
         multi_sig_configs: Mapping<u64, MultiSigConfig>,
         /// Signature tracking: (escrow_id, approval_type, signer) -> bool
-        signatures: Mapping<(u64, ApprovalType, AccountId), bool>,
+        signatures: Mapping<SignatureKey, bool>,
         /// Signature counts: (escrow_id, approval_type) -> count
         signature_counts: Mapping<(u64, ApprovalType), u8>,
         /// Documents per escrow
@@ -287,7 +292,7 @@ mod propchain_escrow {
             release_time_lock: Option<u64>,
         ) -> Result<u64, Error> {
             let caller = self.env().caller();
-            
+
             // Validate configuration
             if required_signatures == 0 || participants.is_empty() {
                 return Err(Error::InvalidConfiguration);
@@ -324,10 +329,12 @@ mod propchain_escrow {
             self.multi_sig_configs.insert(&escrow_id, &multi_sig_config);
 
             // Initialize empty collections
-            self.documents.insert(&escrow_id, &Vec::<DocumentHash>::new());
+            self.documents
+                .insert(&escrow_id, &Vec::<DocumentHash>::new());
             self.conditions.insert(&escrow_id, &Vec::<Condition>::new());
             self.condition_counters.insert(&escrow_id, &0);
-            self.audit_logs.insert(&escrow_id, &Vec::<AuditEntry>::new());
+            self.audit_logs
+                .insert(&escrow_id, &Vec::<AuditEntry>::new());
 
             // Add audit entry
             self.add_audit_entry(
@@ -353,7 +360,7 @@ mod propchain_escrow {
         pub fn deposit_funds(&mut self, escrow_id: u64) -> Result<(), Error> {
             let caller = self.env().caller();
             let transferred = self.env().transferred_value();
-            
+
             let mut escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
 
             // Verify escrow is in correct state
@@ -426,7 +433,11 @@ mod propchain_escrow {
             }
 
             // Transfer funds to seller
-            if self.env().transfer(escrow.seller, escrow.deposited_amount).is_err() {
+            if self
+                .env()
+                .transfer(escrow.seller, escrow.deposited_amount)
+                .is_err()
+            {
                 return Err(Error::InsufficientFunds);
             }
 
@@ -469,7 +480,11 @@ mod propchain_escrow {
             }
 
             // Transfer funds back to buyer
-            if self.env().transfer(escrow.buyer, escrow.deposited_amount).is_err() {
+            if self
+                .env()
+                .transfer(escrow.buyer, escrow.deposited_amount)
+                .is_err()
+            {
                 return Err(Error::InsufficientFunds);
             }
 
@@ -507,7 +522,10 @@ mod propchain_escrow {
             let escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
 
             // Check if caller is a participant
-            if !escrow.participants.contains(&caller) && caller != escrow.buyer && caller != escrow.seller {
+            if !escrow.participants.contains(&caller)
+                && caller != escrow.buyer
+                && caller != escrow.seller
+            {
                 return Err(Error::Unauthorized);
             }
 
@@ -543,7 +561,11 @@ mod propchain_escrow {
 
         /// Verify document
         #[ink(message)]
-        pub fn verify_document(&mut self, escrow_id: u64, document_hash: Hash) -> Result<(), Error> {
+        pub fn verify_document(
+            &mut self,
+            escrow_id: u64,
+            document_hash: Hash,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
             let escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
 
@@ -552,7 +574,10 @@ mod propchain_escrow {
                 return Err(Error::Unauthorized);
             }
 
-            let mut docs = self.documents.get(&escrow_id).ok_or(Error::DocumentNotFound)?;
+            let mut docs = self
+                .documents
+                .get(&escrow_id)
+                .ok_or(Error::DocumentNotFound)?;
             let mut found = false;
 
             for doc in docs.iter_mut() {
@@ -632,7 +657,11 @@ mod propchain_escrow {
 
         /// Mark condition as met
         #[ink(message)]
-        pub fn mark_condition_met(&mut self, escrow_id: u64, condition_id: u64) -> Result<(), Error> {
+        pub fn mark_condition_met(
+            &mut self,
+            escrow_id: u64,
+            condition_id: u64,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
             let escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
 
@@ -679,10 +708,17 @@ mod propchain_escrow {
 
         /// Sign approval for release or refund
         #[ink(message)]
-        pub fn sign_approval(&mut self, escrow_id: u64, approval_type: ApprovalType) -> Result<(), Error> {
+        pub fn sign_approval(
+            &mut self,
+            escrow_id: u64,
+            approval_type: ApprovalType,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
             let _escrow = self.escrows.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
-            let config = self.multi_sig_configs.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
+            let config = self
+                .multi_sig_configs
+                .get(&escrow_id)
+                .ok_or(Error::EscrowNotFound)?;
 
             // Check if caller is a valid signer
             if !config.signers.contains(&caller) {
@@ -701,7 +737,8 @@ mod propchain_escrow {
             // Update signature count
             let count_key = (escrow_id, approval_type.clone());
             let current_count = self.signature_counts.get(&count_key).unwrap_or(0);
-            self.signature_counts.insert(&count_key, &(current_count + 1));
+            self.signature_counts
+                .insert(&count_key, &(current_count + 1));
 
             // Add audit entry
             self.add_audit_entry(
@@ -809,7 +846,11 @@ mod propchain_escrow {
 
         /// Emergency override (admin only)
         #[ink(message)]
-        pub fn emergency_override(&mut self, escrow_id: u64, release_to_seller: bool) -> Result<(), Error> {
+        pub fn emergency_override(
+            &mut self,
+            escrow_id: u64,
+            release_to_seller: bool,
+        ) -> Result<(), Error> {
             let caller = self.env().caller();
 
             // Only admin can perform emergency override
@@ -826,7 +867,11 @@ mod propchain_escrow {
             };
 
             // Transfer funds
-            if self.env().transfer(recipient, escrow.deposited_amount).is_err() {
+            if self
+                .env()
+                .transfer(recipient, escrow.deposited_amount)
+                .is_err()
+            {
                 return Err(Error::InsufficientFunds);
             }
 
@@ -896,14 +941,16 @@ mod propchain_escrow {
         /// Get signature count for approval type
         #[ink(message)]
         pub fn get_signature_count(&self, escrow_id: u64, approval_type: ApprovalType) -> u8 {
-            self.signature_counts.get(&(escrow_id, approval_type)).unwrap_or(0)
+            self.signature_counts
+                .get(&(escrow_id, approval_type))
+                .unwrap_or(0)
         }
 
         /// Check if all conditions are met
         #[ink(message)]
         pub fn check_all_conditions_met(&self, escrow_id: u64) -> Result<bool, Error> {
             let conditions = self.conditions.get(&escrow_id).unwrap_or_default();
-            
+
             // If no conditions, return true
             if conditions.is_empty() {
                 return Ok(true);
@@ -941,14 +988,30 @@ mod propchain_escrow {
         // Helper functions
 
         /// Check if signature threshold is met
-        fn check_signature_threshold(&self, escrow_id: u64, approval_type: ApprovalType) -> Result<bool, Error> {
-            let config = self.multi_sig_configs.get(&escrow_id).ok_or(Error::EscrowNotFound)?;
-            let count = self.signature_counts.get(&(escrow_id, approval_type)).unwrap_or(0);
+        fn check_signature_threshold(
+            &self,
+            escrow_id: u64,
+            approval_type: ApprovalType,
+        ) -> Result<bool, Error> {
+            let config = self
+                .multi_sig_configs
+                .get(&escrow_id)
+                .ok_or(Error::EscrowNotFound)?;
+            let count = self
+                .signature_counts
+                .get(&(escrow_id, approval_type))
+                .unwrap_or(0);
             Ok(count >= config.required_signatures)
         }
 
         /// Add audit entry
-        fn add_audit_entry(&mut self, escrow_id: u64, actor: AccountId, action: String, details: String) {
+        fn add_audit_entry(
+            &mut self,
+            escrow_id: u64,
+            actor: AccountId,
+            action: String,
+            details: String,
+        ) {
             let entry = AuditEntry {
                 timestamp: self.env().block_timestamp(),
                 actor,

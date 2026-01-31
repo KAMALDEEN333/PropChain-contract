@@ -1,11 +1,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(dead_code)]
 
 #[ink::contract]
 mod propchain_proxy {
-    use ink::storage::Mapping;
 
     /// Unique storage key for the proxy data to avoid collisions.
     /// bytes4(keccak256("proxy.storage")) = 0xc5f3bc7a
+    #[allow(dead_code)]
     const PROXY_STORAGE_KEY: u32 = 0xC5F3BC7A;
 
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]

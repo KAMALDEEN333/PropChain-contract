@@ -2,7 +2,8 @@
 #![allow(
     clippy::arithmetic_side_effects,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::needless_borrows_for_generic_args
 )]
 
 use ink::prelude::*;
@@ -13,7 +14,10 @@ use propchain_traits::*;
 #[ink::contract]
 mod propchain_oracle {
     use super::*;
-    use ink::prelude::{string::{String, ToString}, vec::Vec};
+    use ink::prelude::{
+        string::{String, ToString},
+        vec::Vec,
+    };
 
     /// Error types for the Property Valuation Oracle
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
@@ -119,14 +123,21 @@ mod propchain_oracle {
 
         /// Get property valuation from multiple sources with aggregation
         #[ink(message)]
-        pub fn get_property_valuation(&self, property_id: u64) -> Result<PropertyValuation, OracleError> {
-            self.property_valuations.get(&property_id)
+        pub fn get_property_valuation(
+            &self,
+            property_id: u64,
+        ) -> Result<PropertyValuation, OracleError> {
+            self.property_valuations
+                .get(&property_id)
                 .ok_or(OracleError::PropertyNotFound)
         }
 
         /// Get property valuation with confidence metrics
         #[ink(message)]
-        pub fn get_valuation_with_confidence(&self, property_id: u64) -> Result<ValuationWithConfidence, OracleError> {
+        pub fn get_valuation_with_confidence(
+            &self,
+            property_id: u64,
+        ) -> Result<ValuationWithConfidence, OracleError> {
             let valuation = self.get_property_valuation(property_id)?;
 
             // Calculate volatility and confidence interval
@@ -144,7 +155,11 @@ mod propchain_oracle {
 
         /// Update property valuation (admin only)
         #[ink(message)]
-        pub fn update_property_valuation(&mut self, property_id: u64, valuation: PropertyValuation) -> Result<(), OracleError> {
+        pub fn update_property_valuation(
+            &mut self,
+            property_id: u64,
+            valuation: PropertyValuation,
+        ) -> Result<(), OracleError> {
             self.ensure_admin()?;
 
             // Validate valuation
@@ -174,7 +189,10 @@ mod propchain_oracle {
 
         /// Update property valuation from oracle sources
         #[ink(message)]
-        pub fn update_valuation_from_sources(&mut self, property_id: u64) -> Result<(), OracleError> {
+        pub fn update_valuation_from_sources(
+            &mut self,
+            property_id: u64,
+        ) -> Result<(), OracleError> {
             // Collect prices from all active sources
             let prices = self.collect_prices_from_sources(property_id)?;
 
@@ -200,8 +218,13 @@ mod propchain_oracle {
 
         /// Get historical valuations for a property
         #[ink(message)]
-        pub fn get_historical_valuations(&self, property_id: u64, limit: u32) -> Vec<PropertyValuation> {
-            self.historical_valuations.get(&property_id)
+        pub fn get_historical_valuations(
+            &self,
+            property_id: u64,
+            limit: u32,
+        ) -> Vec<PropertyValuation> {
+            self.historical_valuations
+                .get(&property_id)
                 .unwrap_or_default()
                 .into_iter()
                 .rev() // Most recent first
@@ -211,9 +234,14 @@ mod propchain_oracle {
 
         /// Get market volatility metrics
         #[ink(message)]
-        pub fn get_market_volatility(&self, property_type: PropertyType, location: String) -> Result<VolatilityMetrics, OracleError> {
+        pub fn get_market_volatility(
+            &self,
+            property_type: PropertyType,
+            location: String,
+        ) -> Result<VolatilityMetrics, OracleError> {
             let key = format!("{:?}_{}", property_type, location);
-            self.market_trends.get(&key)
+            self.market_trends
+                .get(&key)
                 .map(|trend| VolatilityMetrics {
                     property_type: trend.property_type,
                     location: trend.location,
@@ -227,7 +255,12 @@ mod propchain_oracle {
 
         /// Set price alert for a property
         #[ink(message)]
-        pub fn set_price_alert(&mut self, property_id: u64, threshold_percentage: u32, alert_address: AccountId) -> Result<(), OracleError> {
+        pub fn set_price_alert(
+            &mut self,
+            property_id: u64,
+            threshold_percentage: u32,
+            alert_address: AccountId,
+        ) -> Result<(), OracleError> {
             let alert = PriceAlert {
                 property_id,
                 threshold_percentage,
@@ -269,9 +302,13 @@ mod propchain_oracle {
 
         /// Set location adjustment factor (admin only)
         #[ink(message)]
-        pub fn set_location_adjustment(&mut self, adjustment: LocationAdjustment) -> Result<(), OracleError> {
+        pub fn set_location_adjustment(
+            &mut self,
+            adjustment: LocationAdjustment,
+        ) -> Result<(), OracleError> {
             self.ensure_admin()?;
-            self.location_adjustments.insert(&adjustment.location_code, &adjustment);
+            self.location_adjustments
+                .insert(&adjustment.location_code, &adjustment);
             Ok(())
         }
 
@@ -286,8 +323,13 @@ mod propchain_oracle {
 
         /// Get comparable properties for AVM analysis
         #[ink(message)]
-        pub fn get_comparable_properties(&self, property_id: u64, radius_km: u32) -> Vec<ComparableProperty> {
-            self.comparable_cache.get(&property_id)
+        pub fn get_comparable_properties(
+            &self,
+            property_id: u64,
+            radius_km: u32,
+        ) -> Vec<ComparableProperty> {
+            self.comparable_cache
+                .get(&property_id)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|comp| comp.distance_km <= radius_km)
@@ -303,7 +345,10 @@ mod propchain_oracle {
             Ok(())
         }
 
-        fn collect_prices_from_sources(&self, property_id: u64) -> Result<Vec<PriceData>, OracleError> {
+        fn collect_prices_from_sources(
+            &self,
+            property_id: u64,
+        ) -> Result<Vec<PriceData>, OracleError> {
             let mut prices = Vec::new();
 
             for source_id in &self.active_sources {
@@ -324,7 +369,11 @@ mod propchain_oracle {
             Ok(prices)
         }
 
-        fn get_price_from_source(&self, source: &OracleSource, _property_id: u64) -> Result<PriceData, OracleError> {
+        fn get_price_from_source(
+            &self,
+            source: &OracleSource,
+            _property_id: u64,
+        ) -> Result<PriceData, OracleError> {
             // This is a placeholder for actual price feed integration
             // In production, this would call Chainlink, Pyth, or other oracles
             match source.source_type {
@@ -391,9 +440,14 @@ mod propchain_oracle {
             let mean = sum / prices.len() as u128;
 
             // Calculate standard deviation using fixed point arithmetic
-            let variance: u128 = prices.iter()
+            let variance: u128 = prices
+                .iter()
                 .map(|p| {
-                    let diff = if p.price > mean { p.price - mean } else { mean - p.price };
+                    let diff = if p.price > mean {
+                        p.price - mean
+                    } else {
+                        mean - p.price
+                    };
                     diff * diff
                 })
                 .sum();
@@ -408,9 +462,14 @@ mod propchain_oracle {
             }
 
             // Filter outliers (beyond threshold standard deviations)
-            prices.iter()
+            prices
+                .iter()
                 .filter(|p| {
-                    let diff = if p.price > mean { p.price - mean } else { mean - p.price };
+                    let diff = if p.price > mean {
+                        p.price - mean
+                    } else {
+                        mean - p.price
+                    };
                     diff <= std_dev * self.outlier_threshold as u128
                 })
                 .cloned()
@@ -418,7 +477,8 @@ mod propchain_oracle {
         }
 
         fn get_source_weight(&self, source_id: &str) -> Result<u32, OracleError> {
-            self.oracle_sources.get(&source_id.to_string())
+            self.oracle_sources
+                .get(&source_id.to_string())
                 .map(|source| source.weight)
                 .ok_or(OracleError::OracleSourceNotFound)
         }
@@ -435,9 +495,14 @@ mod propchain_oracle {
             let sum: u128 = prices.iter().map(|p| p.price).sum();
             let mean = sum / prices.len() as u128;
 
-            let variance: u128 = prices.iter()
+            let variance: u128 = prices
+                .iter()
                 .map(|p| {
-                    let diff = if p.price > mean { p.price - mean } else { mean - p.price };
+                    let diff = if p.price > mean {
+                        p.price - mean
+                    } else {
+                        mean - p.price
+                    };
                     diff * diff
                 })
                 .sum();
@@ -447,7 +512,8 @@ mod propchain_oracle {
                 let variance_avg = variance / prices.len() as u128;
                 // Simple approximation of square root (for fixed point)
                 let mut approx = variance_avg;
-                for _ in 0..5 { // Newton-Raphson approximation
+                for _ in 0..5 {
+                    // Newton-Raphson approximation
                     if approx > 0 {
                         approx = (approx + variance_avg / approx) / 2;
                     }
@@ -483,7 +549,7 @@ mod propchain_oracle {
             // Calculate price changes
             let mut changes = Vec::new();
             for i in 1..historical.len() {
-                let prev = historical[i-1].valuation;
+                let prev = historical[i - 1].valuation;
                 let curr = historical[i].valuation;
 
                 if prev > 0 {
@@ -502,13 +568,16 @@ mod propchain_oracle {
             Ok((avg_change_bp / 100).min(100) as u32) // Convert to percentage
         }
 
-        fn calculate_confidence_interval(&self, valuation: &PropertyValuation) -> Result<(u128, u128), OracleError> {
+        fn calculate_confidence_interval(
+            &self,
+            valuation: &PropertyValuation,
+        ) -> Result<(u128, u128), OracleError> {
             // Simple confidence interval based on confidence score
             let margin = valuation.valuation * (100 - valuation.confidence_score) as u128 / 10000; // 1% per confidence point
 
             Ok((
                 valuation.valuation.saturating_sub(margin),
-                valuation.valuation + margin
+                valuation.valuation + margin,
             ))
         }
 
@@ -519,7 +588,10 @@ mod propchain_oracle {
         }
 
         fn store_historical_valuation(&mut self, property_id: u64, valuation: PropertyValuation) {
-            let mut history = self.historical_valuations.get(&property_id).unwrap_or_default();
+            let mut history = self
+                .historical_valuations
+                .get(&property_id)
+                .unwrap_or_default();
             history.push(valuation);
 
             // Keep only last 100 valuations
@@ -531,13 +603,20 @@ mod propchain_oracle {
             self.historical_valuations.insert(&property_id, &history);
         }
 
-        fn check_price_alerts(&mut self, property_id: u64, new_valuation: u128) -> Result<(), OracleError> {
+        fn check_price_alerts(
+            &mut self,
+            property_id: u64,
+            new_valuation: u128,
+        ) -> Result<(), OracleError> {
             if let Some(last_valuation) = self.property_valuations.get(&property_id) {
-                let change_percentage = self.calculate_percentage_change(last_valuation.valuation, new_valuation);
+                let change_percentage =
+                    self.calculate_percentage_change(last_valuation.valuation, new_valuation);
 
                 if let Some(alerts) = self.price_alerts.get(&property_id) {
                     for alert in alerts {
-                        if alert.is_active && change_percentage >= alert.threshold_percentage as u128 {
+                        if alert.is_active
+                            && change_percentage >= alert.threshold_percentage as u128
+                        {
                             self.env().emit_event(PriceAlertTriggered {
                                 property_id,
                                 old_valuation: last_valuation.valuation,
@@ -580,13 +659,14 @@ pub use propchain_oracle::PropertyValuationOracle;
 #[cfg(test)]
 mod oracle_tests {
     use super::*;
+    use ink::codegen::env::Env;
     use ink::env::{
         test::{self, DefaultAccounts},
         DefaultEnvironment,
     };
 
     fn setup_oracle() -> PropertyValuationOracle {
-        let accounts = DefaultAccounts::default();
+        let accounts = test::default_accounts::<DefaultEnvironment>();
         test::set_caller::<DefaultEnvironment>(accounts.alice);
         PropertyValuationOracle::new(accounts.alice)
     }
@@ -601,7 +681,7 @@ mod oracle_tests {
     #[ink::test]
     fn test_add_oracle_source_works() {
         let mut oracle = setup_oracle();
-        let accounts = DefaultAccounts::default();
+        let accounts = test::default_accounts::<DefaultEnvironment>();
 
         let source = OracleSource {
             id: "chainlink_feed".to_string(),
@@ -609,7 +689,7 @@ mod oracle_tests {
             address: accounts.bob,
             is_active: true,
             weight: 50,
-            last_updated: oracle.env().block_timestamp(),
+            last_updated: ink::env::block_timestamp::<DefaultEnvironment>(),
         };
 
         assert!(oracle.add_oracle_source(source).is_ok());
@@ -620,7 +700,7 @@ mod oracle_tests {
     #[ink::test]
     fn test_unauthorized_add_source_fails() {
         let mut oracle = setup_oracle();
-        let accounts = DefaultAccounts::default();
+        let accounts = test::default_accounts::<DefaultEnvironment>();
 
         // Switch to non-admin caller
         test::set_caller::<DefaultEnvironment>(accounts.bob);
@@ -631,10 +711,13 @@ mod oracle_tests {
             address: accounts.bob,
             is_active: true,
             weight: 50,
-            last_updated: oracle.env().block_timestamp(),
+            last_updated: ink::env::block_timestamp::<DefaultEnvironment>(),
         };
 
-        assert_eq!(oracle.add_oracle_source(source), Err(OracleError::Unauthorized));
+        assert_eq!(
+            oracle.add_oracle_source(source),
+            Err(OracleError::Unauthorized)
+        );
     }
 
     #[ink::test]
@@ -646,11 +729,13 @@ mod oracle_tests {
             valuation: 500000, // $500,000
             confidence_score: 85,
             sources_used: 3,
-            last_updated: oracle.env().block_timestamp(),
+            last_updated: ink::env::block_timestamp::<DefaultEnvironment>(),
             valuation_method: ValuationMethod::MarketData,
         };
 
-        assert!(oracle.update_property_valuation(1, valuation.clone()).is_ok());
+        assert!(oracle
+            .update_property_valuation(1, valuation.clone())
+            .is_ok());
 
         let retrieved = oracle.get_property_valuation(1);
         assert!(retrieved.is_ok());
@@ -660,13 +745,16 @@ mod oracle_tests {
     #[ink::test]
     fn test_get_nonexistent_valuation_fails() {
         let oracle = setup_oracle();
-        assert_eq!(oracle.get_property_valuation(999), Err(OracleError::PropertyNotFound));
+        assert_eq!(
+            oracle.get_property_valuation(999),
+            Err(OracleError::PropertyNotFound)
+        );
     }
 
     #[ink::test]
     fn test_set_price_alert_works() {
         let mut oracle = setup_oracle();
-        let accounts = DefaultAccounts::default();
+        let accounts = test::default_accounts::<DefaultEnvironment>();
 
         assert!(oracle.set_price_alert(1, 5, accounts.bob).is_ok());
 
@@ -700,17 +788,17 @@ mod oracle_tests {
         let prices = vec![
             PriceData {
                 price: 100,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source1".to_string(),
             },
             PriceData {
                 price: 105,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source2".to_string(),
             },
             PriceData {
                 price: 98,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source3".to_string(),
             },
         ];
@@ -730,17 +818,17 @@ mod oracle_tests {
         let prices = vec![
             PriceData {
                 price: 100,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source1".to_string(),
             },
             PriceData {
                 price: 105,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source2".to_string(),
             },
             PriceData {
                 price: 200, // Outlier
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source3".to_string(),
             },
         ];
@@ -758,17 +846,17 @@ mod oracle_tests {
         let prices = vec![
             PriceData {
                 price: 100,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source1".to_string(),
             },
             PriceData {
                 price: 102,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source2".to_string(),
             },
             PriceData {
                 price: 98,
-                timestamp: oracle.env().block_timestamp(),
+                timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
                 source: "source3".to_string(),
             },
         ];
@@ -788,7 +876,7 @@ mod oracle_tests {
         let adjustment = LocationAdjustment {
             location_code: "NYC_MANHATTAN".to_string(),
             adjustment_percentage: 15, // 15% premium
-            last_updated: oracle.env().block_timestamp(),
+            last_updated: ink::env::block_timestamp::<DefaultEnvironment>(),
             confidence_score: 90,
         };
 
@@ -823,7 +911,7 @@ mod oracle_tests {
 
         let prices = vec![PriceData {
             price: 100,
-            timestamp: oracle.env().block_timestamp(),
+            timestamp: ink::env::block_timestamp::<DefaultEnvironment>(),
             source: "source1".to_string(),
         }];
 
