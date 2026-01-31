@@ -1,22 +1,19 @@
-use crate::propchain_escrow::*;
-use ink::env::test;
-use ink::primitives::{AccountId, Hash};
-
 #[cfg(test)]
 pub mod escrow_tests {
-    use super::*;
+    use crate::propchain_escrow::*;
+    use ink::primitives::{AccountId, Hash};
     use ink::env::test::DefaultAccounts;
 
     fn default_accounts() -> DefaultAccounts<ink::env::DefaultEnvironment> {
-        test::default_accounts::<ink::env::DefaultEnvironment>()
+        ink::env::test::default_accounts::<ink::env::DefaultEnvironment>()
     }
 
     fn set_caller(caller: AccountId) {
-        test::set_caller::<ink::env::DefaultEnvironment>(caller);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(caller);
     }
 
     fn set_balance(account: AccountId, balance: u128) {
-        test::set_account_balance::<ink::env::DefaultEnvironment>(account, balance);
+        ink::env::test::set_account_balance::<ink::env::DefaultEnvironment>(account, balance);
     }
 
     #[ink::test]
@@ -31,15 +28,15 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob, accounts.charlie];
         let result = contract.create_escrow_advanced(
-            1, // property_id
-            1_000_000, // amount
+            1,              // property_id
+            1_000_000,      // amount
             accounts.alice, // buyer
-            accounts.bob, // seller
+            accounts.bob,   // seller
             participants,
-            2, // required_signatures
+            2,    // required_signatures
             None, // no time lock
         );
 
@@ -61,7 +58,7 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         // Test with more required signatures than participants
         let participants = vec![accounts.alice, accounts.bob];
         let result = contract.create_escrow_advanced(
@@ -84,20 +81,22 @@ pub mod escrow_tests {
         set_balance(accounts.alice, 2_000_000);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         // Deposit funds
-        test::set_value_transferred::<ink::env::DefaultEnvironment>(1_000_000);
+        ink::env::test::set_value_transferred::<ink::env::DefaultEnvironment>(1_000_000);
         let result = contract.deposit_funds(escrow_id);
         assert!(result.is_ok());
 
@@ -112,24 +111,22 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         let doc_hash = Hash::from([1u8; 32]);
-        let result = contract.upload_document(
-            escrow_id,
-            doc_hash,
-            "Title Deed".to_string(),
-        );
+        let result = contract.upload_document(escrow_id, doc_hash, "Title Deed".to_string());
 
         assert!(result.is_ok());
 
@@ -137,7 +134,7 @@ pub mod escrow_tests {
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].hash, doc_hash);
         assert_eq!(documents[0].document_type, "Title Deed");
-        assert_eq!(documents[0].verified, false);
+        assert!(!documents[0].verified);
     }
 
     #[ink::test]
@@ -146,27 +143,31 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         let doc_hash = Hash::from([1u8; 32]);
-        contract.upload_document(escrow_id, doc_hash, "Title Deed".to_string()).unwrap();
+        contract
+            .upload_document(escrow_id, doc_hash, "Title Deed".to_string())
+            .unwrap();
 
         // Verify document
         let result = contract.verify_document(escrow_id, doc_hash);
         assert!(result.is_ok());
 
         let documents = contract.get_documents(escrow_id);
-        assert_eq!(documents[0].verified, true);
+        assert!(documents[0].verified);
     }
 
     #[ink::test]
@@ -175,22 +176,21 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        let result = contract.add_condition(
-            escrow_id,
-            "Property inspection completed".to_string(),
-        );
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        let result = contract.add_condition(escrow_id, "Property inspection completed".to_string());
 
         assert!(result.is_ok());
         let condition_id = result.unwrap();
@@ -199,7 +199,7 @@ pub mod escrow_tests {
         let conditions = contract.get_conditions(escrow_id);
         assert_eq!(conditions.len(), 1);
         assert_eq!(conditions[0].description, "Property inspection completed");
-        assert_eq!(conditions[0].met, false);
+        assert!(!conditions[0].met);
     }
 
     #[ink::test]
@@ -208,28 +208,29 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        let condition_id = contract.add_condition(
-            escrow_id,
-            "Property inspection completed".to_string(),
-        ).unwrap();
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        let condition_id = contract
+            .add_condition(escrow_id, "Property inspection completed".to_string())
+            .unwrap();
 
         let result = contract.mark_condition_met(escrow_id, condition_id);
         assert!(result.is_ok());
 
         let conditions = contract.get_conditions(escrow_id);
-        assert_eq!(conditions[0].met, true);
+        assert!(conditions[0].met);
         assert_eq!(conditions[0].verified_by, Some(accounts.alice));
     }
 
@@ -239,17 +240,19 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         // Alice signs
         let result = contract.sign_approval(escrow_id, ApprovalType::Release);
@@ -273,19 +276,23 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        contract.sign_approval(escrow_id, ApprovalType::Release).unwrap();
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        contract
+            .sign_approval(escrow_id, ApprovalType::Release)
+            .unwrap();
 
         // Try to sign again
         let result = contract.sign_approval(escrow_id, ApprovalType::Release);
@@ -298,29 +305,29 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        let result = contract.raise_dispute(
-            escrow_id,
-            "Property condition not as described".to_string(),
-        );
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        let result =
+            contract.raise_dispute(escrow_id, "Property condition not as described".to_string());
 
         assert!(result.is_ok());
 
         let dispute = contract.get_dispute(escrow_id).unwrap();
         assert_eq!(dispute.raised_by, accounts.alice);
         assert_eq!(dispute.reason, "Property condition not as described");
-        assert_eq!(dispute.resolved, false);
+        assert!(!dispute.resolved);
 
         let escrow = contract.get_escrow(escrow_id).unwrap();
         assert_eq!(escrow.status, EscrowStatus::Disputed);
@@ -333,32 +340,36 @@ pub mod escrow_tests {
 
         let mut contract = AdvancedEscrow::new(1_000_000);
         let admin = contract.get_admin();
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        contract.raise_dispute(escrow_id, "Issue".to_string()).unwrap();
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        contract
+            .raise_dispute(escrow_id, "Issue".to_string())
+            .unwrap();
 
         // Admin resolves dispute
         set_caller(admin);
-        let result = contract.resolve_dispute(
-            escrow_id,
-            "Resolved in favor of buyer".to_string(),
-        );
+        let result = contract.resolve_dispute(escrow_id, "Resolved in favor of buyer".to_string());
 
         assert!(result.is_ok());
 
         let dispute = contract.get_dispute(escrow_id).unwrap();
-        assert_eq!(dispute.resolved, true);
-        assert_eq!(dispute.resolution, Some("Resolved in favor of buyer".to_string()));
+        assert!(dispute.resolved);
+        assert_eq!(
+            dispute.resolution,
+            Some("Resolved in favor of buyer".to_string())
+        );
 
         let escrow = contract.get_escrow(escrow_id).unwrap();
         assert_eq!(escrow.status, EscrowStatus::Active);
@@ -370,19 +381,23 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
-        let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
 
-        contract.raise_dispute(escrow_id, "Issue".to_string()).unwrap();
+        let participants = vec![accounts.alice, accounts.bob];
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
+
+        contract
+            .raise_dispute(escrow_id, "Issue".to_string())
+            .unwrap();
 
         // Non-admin tries to resolve
         set_caller(accounts.bob);
@@ -396,25 +411,31 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         // No conditions - should return true
         let result = contract.check_all_conditions_met(escrow_id);
         assert_eq!(result, Ok(true));
 
         // Add conditions
-        let cond1 = contract.add_condition(escrow_id, "Condition 1".to_string()).unwrap();
-        let cond2 = contract.add_condition(escrow_id, "Condition 2".to_string()).unwrap();
+        let cond1 = contract
+            .add_condition(escrow_id, "Condition 1".to_string())
+            .unwrap();
+        let cond2 = contract
+            .add_condition(escrow_id, "Condition 2".to_string())
+            .unwrap();
 
         // Not all met
         let result = contract.check_all_conditions_met(escrow_id);
@@ -437,27 +458,33 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants,
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants,
+                2,
+                None,
+            )
+            .unwrap();
 
         // Perform some actions
-        contract.add_condition(escrow_id, "Test condition".to_string()).unwrap();
+        contract
+            .add_condition(escrow_id, "Test condition".to_string())
+            .unwrap();
         let doc_hash = Hash::from([1u8; 32]);
-        contract.upload_document(escrow_id, doc_hash, "Test doc".to_string()).unwrap();
+        contract
+            .upload_document(escrow_id, doc_hash, "Test doc".to_string())
+            .unwrap();
 
         // Check audit trail
         let audit_trail = contract.get_audit_trail(escrow_id);
         assert!(audit_trail.len() >= 3); // Created + Condition + Document
-        
+
         // Verify audit entries contain expected actions
         let actions: Vec<String> = audit_trail.iter().map(|e| e.action.clone()).collect();
         assert!(actions.contains(&"EscrowCreated".to_string()));
@@ -500,17 +527,19 @@ pub mod escrow_tests {
         set_caller(accounts.alice);
 
         let mut contract = AdvancedEscrow::new(1_000_000);
-        
+
         let participants = vec![accounts.alice, accounts.bob, accounts.charlie];
-        let escrow_id = contract.create_escrow_advanced(
-            1,
-            1_000_000,
-            accounts.alice,
-            accounts.bob,
-            participants.clone(),
-            2,
-            None,
-        ).unwrap();
+        let escrow_id = contract
+            .create_escrow_advanced(
+                1,
+                1_000_000,
+                accounts.alice,
+                accounts.bob,
+                participants.clone(),
+                2,
+                None,
+            )
+            .unwrap();
 
         let config = contract.get_multi_sig_config(escrow_id).unwrap();
         assert_eq!(config.required_signatures, 2);
