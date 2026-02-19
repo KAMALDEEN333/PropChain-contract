@@ -1,7 +1,18 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ink::prelude::string::String;
+    use ink::prelude::vec::Vec;
     use ink::primitives::Hash;
+    
+    use crate::ipfs_metadata::{
+        IpfsMetadataRegistry,
+        ValidationRules,
+        PropertyMetadata,
+        DocumentType,
+        Error,
+        AccessLevel,
+    };
 
     // Helper function to create default validation rules
     fn default_validation_rules() -> ValidationRules {
@@ -143,7 +154,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert!(result.is_ok());
     }
 
@@ -152,7 +163,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert!(result.is_ok());
     }
 
@@ -161,7 +172,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
@@ -170,7 +181,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbd"; // 45 chars
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
@@ -179,7 +190,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "XmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
