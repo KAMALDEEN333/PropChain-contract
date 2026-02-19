@@ -703,18 +703,15 @@ mod ipfs_metadata {
                 self.check_admin_access(property_id, caller)?;
             }
 
-            self.access_permissions.insert((property_id, account), &access_level);
+            self.access_permissions
+                .insert((property_id, account), &access_level);
 
             Ok(())
         }
 
         /// Revokes access to property documents
         #[ink(message)]
-        pub fn revoke_access(
-            &mut self,
-            property_id: u64,
-            account: AccountId,
-        ) -> Result<(), Error> {
+        pub fn revoke_access(&mut self, property_id: u64, account: AccountId) -> Result<(), Error> {
             let caller = self.env().caller();
 
             // Only admin or property owner can revoke access
@@ -839,7 +836,11 @@ mod ipfs_metadata {
                 return Err(Error::Unauthorized);
             }
 
-            if !self.validation_rules.allowed_mime_types.contains(&mime_type) {
+            if !self
+                .validation_rules
+                .allowed_mime_types
+                .contains(&mime_type)
+            {
                 self.validation_rules.allowed_mime_types.push(mime_type);
             }
 
@@ -859,7 +860,9 @@ mod ipfs_metadata {
                 return Err(Error::Unauthorized);
             }
 
-            let document = self.documents.get(document_id)
+            let document = self
+                .documents
+                .get(document_id)
                 .ok_or(Error::DocumentNotFound)?;
 
             // Emit malicious file event
@@ -877,7 +880,8 @@ mod ipfs_metadata {
             // Remove from property documents list
             let mut doc_ids = self.property_documents.get(document.property_id).unwrap_or_default();
             doc_ids.retain(|&id| id != document_id);
-            self.property_documents.insert(document.property_id, &doc_ids);
+            self.property_documents
+                .insert(document.property_id, &doc_ids);
 
             Ok(())
         }
