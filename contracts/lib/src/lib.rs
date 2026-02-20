@@ -813,8 +813,23 @@ mod propchain_contracts {
         /// Update property valuation using the oracle
         #[ink(message)]
         pub fn update_valuation_from_oracle(&mut self, property_id: u64) -> Result<(), Error> {
-            self.oracle.ok_or(Error::OracleError)?;
-            // Logic to call oracle would go here
+            let oracle_addr = self.oracle.ok_or(Error::OracleError)?;
+            
+            // Use the Oracle trait to perform the cross-contract call
+            use ink::env::call::FromAccountId;
+            let oracle: ink::contract_ref!(Oracle) = FromAccountId::from_account_id(oracle_addr);
+            
+            // Fetch valuation from oracle
+            let valuation = oracle.get_valuation(property_id).map_err(|_| Error::OracleError)?;
+            
+            // Update the property's recorded valuation in its metadata
+            if let Some(mut property) = self.properties.get(&property_id) {
+                property.metadata.valuation = valuation.valuation;
+                self.properties.insert(&property_id, &property);
+            } else {
+                return Err(Error::PropertyNotFound);
+            }
+            
             Ok(())
         }
 

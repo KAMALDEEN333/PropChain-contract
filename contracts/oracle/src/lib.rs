@@ -19,22 +19,6 @@ mod propchain_oracle {
         vec::Vec,
     };
 
-    /// Error types for the Property Valuation Oracle
-    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
-    pub enum OracleError {
-        PropertyNotFound,
-        InsufficientSources,
-        InvalidValuation,
-        Unauthorized,
-        OracleSourceNotFound,
-        InvalidParameters,
-        PriceFeedError,
-        AlertNotFound,
-        InsufficientReputation,
-        SourceAlreadyExists,
-        RequestPending,
-    }
 
     /// Property Valuation Oracle storage
     #[ink(storage)]
@@ -43,7 +27,7 @@ mod propchain_oracle {
         admin: AccountId,
 
         /// Property valuations storage
-        property_valuations: Mapping<u64, PropertyValuation>,
+        pub property_valuations: Mapping<u64, PropertyValuation>,
 
         /// Historical valuations per property
         historical_valuations: Mapping<u64, Vec<PropertyValuation>>,
@@ -61,7 +45,7 @@ mod propchain_oracle {
         pub location_adjustments: Mapping<String, LocationAdjustment>,
 
         /// Market trends data
-        market_trends: Mapping<String, MarketTrend>,
+        pub market_trends: Mapping<String, MarketTrend>,
 
         /// Comparable properties cache
         comparable_cache: Mapping<u64, Vec<ComparableProperty>>,
@@ -76,16 +60,16 @@ mod propchain_oracle {
         outlier_threshold: u32,
 
         /// Source reputations (0-1000, where 1000 is perfect)
-        source_reputations: Mapping<String, u32>,
+        pub source_reputations: Mapping<String, u32>,
 
         /// Source stakes for slashing
-        source_stakes: Mapping<String, u128>,
+        pub source_stakes: Mapping<String, u128>,
 
         /// Pending valuation requests: property_id -> timestamp
-        pending_requests: Mapping<u64, u64>,
+        pub pending_requests: Mapping<u64, u64>,
 
         /// Request counter for unique request IDs
-        request_id_counter: u64,
+        pub request_id_counter: u64,
     }
 
     /// Events emitted by the oracle
@@ -754,67 +738,75 @@ mod propchain_oracle {
 
     /// Implementation of the Oracle trait from propchain-traits
     impl propchain_traits::Oracle for PropertyValuationOracle {
-        type Error = OracleError;
-
-        fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, Self::Error> {
+        #[ink(message)]
+        fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, OracleError> {
             self.get_property_valuation(property_id)
         }
 
+        #[ink(message)]
         fn get_valuation_with_confidence(
             &self,
             property_id: u64,
-        ) -> Result<ValuationWithConfidence, Self::Error> {
+        ) -> Result<ValuationWithConfidence, OracleError> {
             self.get_valuation_with_confidence(property_id)
         }
 
-        fn request_valuation(&mut self, property_id: u64) -> Result<u64, Self::Error> {
+        #[ink(message)]
+        fn request_valuation(&mut self, property_id: u64) -> Result<u64, OracleError> {
             self.request_property_valuation(property_id)
         }
 
-        fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, Self::Error> {
+        #[ink(message)]
+        fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, OracleError> {
             self.batch_request_valuations(property_ids)
         }
 
+        #[ink(message)]
         fn get_historical_valuations(&self, property_id: u64, limit: u32) -> Vec<PropertyValuation> {
             self.get_historical_valuations(property_id, limit)
         }
 
+        #[ink(message)]
         fn get_market_volatility(
             &self,
             property_type: PropertyType,
             location: String,
-        ) -> Result<VolatilityMetrics, Self::Error> {
+        ) -> Result<VolatilityMetrics, OracleError> {
             self.get_market_volatility(property_type, location)
         }
     }
 
     /// Implementation of the OracleRegistry trait from propchain-traits
     impl propchain_traits::OracleRegistry for PropertyValuationOracle {
-        type Error = OracleError;
-
-        fn add_source(&mut self, source: OracleSource) -> Result<(), Self::Error> {
+        #[ink(message)]
+        fn add_source(&mut self, source: OracleSource) -> Result<(), OracleError> {
             self.add_oracle_source(source)
         }
 
-        fn remove_source(&mut self, source_id: String) -> Result<(), Self::Error> {
+        #[ink(message)]
+        fn remove_source(&mut self, source_id: String) -> Result<(), OracleError> {
             self.ensure_admin()?;
             self.oracle_sources.remove(&source_id);
             self.active_sources.retain(|id| id != &source_id);
             Ok(())
         }
 
-        fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), Self::Error> {
+        #[ink(message)]
+        fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), OracleError> {
             self.update_source_reputation(source_id, success)
         }
 
+        #[ink(message)]
         fn get_reputation(&self, source_id: String) -> Option<u32> {
             self.source_reputations.get(&source_id)
         }
 
-        fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), Self::Error> {
+        #[ink(message)]
+        fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), OracleError> {
             self.slash_source(source_id, penalty_amount)
         }
 
+        #[ink(message)]
         fn detect_anomalies(&self, property_id: u64, new_valuation: u128) -> bool {
             self.is_anomaly(property_id, new_valuation)
         }
@@ -827,9 +819,9 @@ mod propchain_oracle {
     }
 }
 
-// Re-export the contract
 // Re-export the contract and error type
-pub use propchain_oracle::{OracleError, PropertyValuationOracle};
+pub use propchain_traits::OracleError;
+pub use propchain_oracle::PropertyValuationOracle;
 
 #[cfg(test)]
 mod oracle_tests {

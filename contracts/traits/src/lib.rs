@@ -3,6 +3,23 @@
 use ink::prelude::string::String;
 use ink::primitives::AccountId;
 
+/// Error types for the Property Valuation Oracle
+#[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
+#[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+pub enum OracleError {
+    PropertyNotFound,
+    InsufficientSources,
+    InvalidValuation,
+    Unauthorized,
+    OracleSourceNotFound,
+    InvalidParameters,
+    PriceFeedError,
+    AlertNotFound,
+    InsufficientReputation,
+    SourceAlreadyExists,
+    RequestPending,
+}
+
 /// Trait definitions for PropChain contracts
 pub trait PropertyRegistry {
     /// Error type for the contract
@@ -230,57 +247,63 @@ pub struct MarketTrend {
 /// Oracle trait for real-time property valuation
 #[ink::trait_definition]
 pub trait Oracle {
-    /// Error type for oracle operations
-    type Error;
-
     /// Get current property valuation
-    fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, Self::Error>;
+    #[ink(message)]
+    fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, OracleError>;
 
     /// Get valuation with detailed confidence metrics
+    #[ink(message)]
     fn get_valuation_with_confidence(
         &self,
         property_id: u64,
-    ) -> Result<ValuationWithConfidence, Self::Error>;
+    ) -> Result<ValuationWithConfidence, OracleError>;
 
     /// Request a new valuation for a property (async pattern)
-    fn request_valuation(&mut self, property_id: u64) -> Result<u64, Self::Error>;
+    #[ink(message)]
+    fn request_valuation(&mut self, property_id: u64) -> Result<u64, OracleError>;
 
     /// Batch request valuations for multiple properties
-    fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, Self::Error>;
+    #[ink(message)]
+    fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, OracleError>;
 
     /// Get historical valuations for a property
+    #[ink(message)]
     fn get_historical_valuations(&self, property_id: u64, limit: u32) -> Vec<PropertyValuation>;
 
     /// Get market volatility for a specific location and property type
+    #[ink(message)]
     fn get_market_volatility(
         &self,
         property_type: PropertyType,
         location: String,
-    ) -> Result<VolatilityMetrics, Self::Error>;
+    ) -> Result<VolatilityMetrics, OracleError>;
 }
 
 /// Oracle Registry trait for managing multiple price feeds and reputation
 #[ink::trait_definition]
 pub trait OracleRegistry {
-    /// Error type for registry operations
-    type Error;
-
     /// Register a new oracle source
-    fn add_source(&mut self, source: OracleSource) -> Result<(), Self::Error>;
+    #[ink(message)]
+    fn add_source(&mut self, source: OracleSource) -> Result<(), OracleError>;
 
     /// Remove an oracle source
-    fn remove_source(&mut self, source_id: String) -> Result<(), Self::Error>;
+    #[ink(message)]
+    fn remove_source(&mut self, source_id: String) -> Result<(), OracleError>;
 
     /// Update oracle source reputation based on performance
-    fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), Self::Error>;
+    #[ink(message)]
+    fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), OracleError>;
 
     /// Get oracle source reputation score
+    #[ink(message)]
     fn get_reputation(&self, source_id: String) -> Option<u32>;
 
     /// Slash oracle source for providing invalid data
-    fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), Self::Error>;
+    #[ink(message)]
+    fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), OracleError>;
 
     /// Check for anomalies in price data
+    #[ink(message)]
     fn detect_anomalies(&self, property_id: u64, new_valuation: u128) -> bool;
 }
 
