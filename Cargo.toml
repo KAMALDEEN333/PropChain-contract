@@ -9,6 +9,7 @@ members = [
     "contracts/oracle",
     "contracts/bridge",
     "contracts/property-token",
+    "contracts/insurance",
 ]
 resolver = "2"
 
