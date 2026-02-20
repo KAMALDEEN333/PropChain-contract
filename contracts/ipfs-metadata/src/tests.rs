@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::ipfs_metadata::{
         AccessLevel, DocumentType, Error, IpfsMetadataRegistry, PropertyMetadata, ValidationRules,
@@ -488,7 +489,7 @@ mod tests {
         // Verify with correct hash
         let result = contract.verify_content_hash(document_id, content_hash);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[ink::test]

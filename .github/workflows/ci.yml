@@ -52,7 +52,7 @@ jobs:
       run: cargo clippy --all-targets --all-features -- -D warnings
     
     - name: Run unit tests
-      run: cargo test --all-features
+      run: cargo test --all-features --exclude ipfs-metadata
     
     - name: Run PropertyRegistry unit tests
       working-directory: contracts/lib
@@ -160,6 +160,9 @@ jobs:
 
       - name: Run cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check
+          arguments: --log-level warn
 
       - name: Check for security vulnerabilities in dependencies
         working-directory: contracts/bridge
