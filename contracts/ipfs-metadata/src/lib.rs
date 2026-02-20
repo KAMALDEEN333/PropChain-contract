@@ -505,13 +505,6 @@ mod ipfs_metadata {
                 {
                     return Err(Error::FileTypeNotAllowed);
                 }
-            if !self.validation_rules.allowed_mime_types.is_empty()
-                && !self
-                    .validation_rules
-                    .allowed_mime_types
-                    .contains(&mime_type)
-            {
-                return Err(Error::FileTypeNotAllowed);
             }
 
             // Increment document counter
