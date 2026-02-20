@@ -31,6 +31,9 @@ mod propchain_oracle {
         InvalidParameters,
         PriceFeedError,
         AlertNotFound,
+        InsufficientReputation,
+        SourceAlreadyExists,
+        RequestPending,
     }
 
     /// Property Valuation Oracle storage
@@ -71,6 +74,18 @@ mod propchain_oracle {
 
         /// Outlier detection threshold (standard deviations)
         outlier_threshold: u32,
+
+        /// Source reputations (0-1000, where 1000 is perfect)
+        source_reputations: Mapping<String, u32>,
+
+        /// Source stakes for slashing
+        source_stakes: Mapping<String, u128>,
+
+        /// Pending valuation requests: property_id -> timestamp
+        pending_requests: Mapping<u64, u64>,
+
+        /// Request counter for unique request IDs
+        request_id_counter: u64,
     }
 
     /// Events emitted by the oracle
@@ -118,6 +133,10 @@ mod propchain_oracle {
                 max_price_staleness: 3600, // 1 hour
                 min_sources_required: 2,
                 outlier_threshold: 2, // 2 standard deviations
+                source_reputations: Mapping::default(),
+                source_stakes: Mapping::default(),
+                pending_requests: Mapping::default(),
+                request_id_counter: 0,
             }
         }
 
@@ -213,7 +232,97 @@ mod propchain_oracle {
                 valuation_method: ValuationMethod::MarketData,
             };
 
-            self.update_property_valuation(property_id, valuation)
+            self.update_property_valuation(property_id, valuation)?;
+            self.clear_pending_request(property_id);
+            Ok(())
+        }
+
+        /// Request a new valuation for a property
+        #[ink(message)]
+        pub fn request_property_valuation(&mut self, property_id: u64) -> Result<u64, OracleError> {
+            // Check if request already pending
+            if let Some(timestamp) = self.pending_requests.get(&property_id) {
+                let current_time = self.env().block_timestamp();
+                if current_time.saturating_sub(timestamp) < self.max_price_staleness {
+                    return Err(OracleError::RequestPending);
+                }
+            }
+
+            let request_id = self.request_id_counter;
+            self.request_id_counter += 1;
+            
+            self.pending_requests.insert(&property_id, &self.env().block_timestamp());
+            
+            Ok(request_id)
+        }
+
+        /// Batch request valuations for multiple properties
+        #[ink(message)]
+        pub fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, OracleError> {
+            let mut request_ids = Vec::new();
+            for id in property_ids {
+                if let Ok(req_id) = self.request_property_valuation(id) {
+                    request_ids.push(req_id);
+                }
+            }
+            Ok(request_ids)
+        }
+
+        /// Update oracle reputation (admin only)
+        #[ink(message)]
+        pub fn update_source_reputation(&mut self, source_id: String, success: bool) -> Result<(), OracleError> {
+            self.ensure_admin()?;
+            let current_rep = self.source_reputations.get(&source_id).unwrap_or(500); // Start at 500
+            
+            let new_rep = if success {
+                (current_rep + 10).min(1000)
+            } else {
+                current_rep.saturating_sub(50)
+            };
+            
+            self.source_reputations.insert(&source_id, &new_rep);
+            
+            // Auto-deactivate source if reputation falls too low
+            if new_rep < 200 {
+                if let Some(mut source) = self.oracle_sources.get(&source_id) {
+                    source.is_active = false;
+                    self.oracle_sources.insert(&source_id, &source);
+                    self.active_sources.retain(|id| id != &source_id);
+                }
+            }
+            
+            Ok(())
+        }
+
+        /// Slash an oracle source for providing bad data (admin only)
+        #[ink(message)]
+        pub fn slash_source(&mut self, source_id: String, penalty: u128) -> Result<(), OracleError> {
+            self.ensure_admin()?;
+            
+            let current_stake = self.source_stakes.get(&source_id).unwrap_or(0);
+            self.source_stakes.insert(&source_id, &current_stake.saturating_sub(penalty));
+            
+            // Also hit the reputation hard
+            self.update_source_reputation(source_id, false)?;
+            
+            Ok(())
+        }
+
+        /// Detect if a new valuation is an anomaly based on historical data
+        #[ink(message)]
+        pub fn is_anomaly(&self, property_id: u64, new_valuation: u128) -> bool {
+            if let Some(current) = self.property_valuations.get(&property_id) {
+                let change_pct = self.calculate_percentage_change(current.valuation, new_valuation);
+                
+                // If change > 20% in a single update, flag as anomaly unless volatility is high
+                if change_pct > 20 {
+                    let volatility = self.calculate_volatility(property_id).unwrap_or(0);
+                    if volatility < 10 { // 10% volatility
+                        return true;
+                    }
+                }
+            }
+            false
         }
 
         /// Get historical valuations for a property
@@ -383,6 +492,10 @@ mod propchain_oracle {
                 }
                 OracleSourceType::Pyth => {
                     // Implement Pyth integration
+                    Err(OracleError::PriceFeedError)
+                }
+                OracleSourceType::Substrate => {
+                    // Implement Substrate price feed integration (pallets/OCW)
                     Err(OracleError::PriceFeedError)
                 }
                 OracleSourceType::Manual => {
@@ -631,6 +744,79 @@ mod propchain_oracle {
             let diff = new_value.abs_diff(old_value);
 
             (diff * 100) / old_value
+        }
+
+        /// Clear pending request after successful update
+        fn clear_pending_request(&mut self, property_id: u64) {
+            self.pending_requests.remove(&property_id);
+        }
+    }
+
+    /// Implementation of the Oracle trait from propchain-traits
+    impl propchain_traits::Oracle for PropertyValuationOracle {
+        type Error = OracleError;
+
+        fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, Self::Error> {
+            self.get_property_valuation(property_id)
+        }
+
+        fn get_valuation_with_confidence(
+            &self,
+            property_id: u64,
+        ) -> Result<ValuationWithConfidence, Self::Error> {
+            self.get_valuation_with_confidence(property_id)
+        }
+
+        fn request_valuation(&mut self, property_id: u64) -> Result<u64, Self::Error> {
+            self.request_property_valuation(property_id)
+        }
+
+        fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, Self::Error> {
+            self.batch_request_valuations(property_ids)
+        }
+
+        fn get_historical_valuations(&self, property_id: u64, limit: u32) -> Vec<PropertyValuation> {
+            self.get_historical_valuations(property_id, limit)
+        }
+
+        fn get_market_volatility(
+            &self,
+            property_type: PropertyType,
+            location: String,
+        ) -> Result<VolatilityMetrics, Self::Error> {
+            self.get_market_volatility(property_type, location)
+        }
+    }
+
+    /// Implementation of the OracleRegistry trait from propchain-traits
+    impl propchain_traits::OracleRegistry for PropertyValuationOracle {
+        type Error = OracleError;
+
+        fn add_source(&mut self, source: OracleSource) -> Result<(), Self::Error> {
+            self.add_oracle_source(source)
+        }
+
+        fn remove_source(&mut self, source_id: String) -> Result<(), Self::Error> {
+            self.ensure_admin()?;
+            self.oracle_sources.remove(&source_id);
+            self.active_sources.retain(|id| id != &source_id);
+            Ok(())
+        }
+
+        fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), Self::Error> {
+            self.update_source_reputation(source_id, success)
+        }
+
+        fn get_reputation(&self, source_id: String) -> Option<u32> {
+            self.source_reputations.get(&source_id)
+        }
+
+        fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), Self::Error> {
+            self.slash_source(source_id, penalty_amount)
+        }
+
+        fn detect_anomalies(&self, property_id: u64, new_valuation: u128) -> bool {
+            self.is_anomaly(property_id, new_valuation)
         }
     }
 
@@ -936,5 +1122,70 @@ mod oracle_tests {
         // With min_sources_required = 2, this should fail
         let result = oracle.aggregate_prices(&prices);
         assert_eq!(result, Err(OracleError::InsufficientSources));
+    }
+
+    #[ink::test]
+    fn test_source_reputation_works() {
+        let mut oracle = setup_oracle();
+        let source_id = "source1".to_string();
+        
+        // Initial reputation should be 500
+        assert!(oracle.update_source_reputation(source_id.clone(), true).is_ok());
+        assert_eq!(oracle.source_reputations.get(&source_id).unwrap(), 510);
+        
+        // Test penalty
+        assert!(oracle.update_source_reputation(source_id.clone(), false).is_ok());
+        assert_eq!(oracle.source_reputations.get(&source_id).unwrap(), 460);
+    }
+
+    #[ink::test]
+    fn test_slashing_works() {
+        let mut oracle = setup_oracle();
+        let source_id = "source1".to_string();
+        
+        oracle.source_stakes.insert(&source_id, &1000);
+        assert!(oracle.slash_source(source_id.clone(), 100).is_ok());
+        
+        assert_eq!(oracle.source_stakes.get(&source_id).unwrap(), 900);
+        // Reputation should also decrease
+        assert!(oracle.source_reputations.get(&source_id).unwrap() < 500);
+    }
+
+    #[ink::test]
+    fn test_anomaly_detection_works() {
+        let mut oracle = setup_oracle();
+        let property_id = 1;
+        
+        let valuation = PropertyValuation {
+            property_id,
+            valuation: 100000,
+            confidence_score: 90,
+            sources_used: 3,
+            last_updated: 0,
+            valuation_method: ValuationMethod::Automated,
+        };
+        
+        oracle.property_valuations.insert(&property_id, &valuation);
+        
+        // Normal price change (5%)
+        assert!(!oracle.is_anomaly(property_id, 105000));
+        
+        // Anomaly price change (25%)
+        assert!(oracle.is_anomaly(property_id, 130000));
+    }
+
+    #[ink::test]
+    fn test_batch_request_works() {
+        let mut oracle = setup_oracle();
+        let property_ids = vec![1, 2, 3];
+        
+        let result = oracle.batch_request_valuations(property_ids);
+        assert!(result.is_ok());
+        let request_ids = result.unwrap();
+        assert_eq!(request_ids.len(), 3);
+        
+        assert!(oracle.pending_requests.get(&1).is_some());
+        assert!(oracle.pending_requests.get(&2).is_some());
+        assert!(oracle.pending_requests.get(&3).is_some());
     }
 }

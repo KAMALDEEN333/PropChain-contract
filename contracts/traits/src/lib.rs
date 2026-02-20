@@ -195,6 +195,7 @@ pub struct OracleSource {
 pub enum OracleSourceType {
     Chainlink,
     Pyth,
+    Substrate,
     Custom,
     Manual,
 }
@@ -224,6 +225,63 @@ pub struct MarketTrend {
     pub trend_percentage: i32, // Trend direction and magnitude
     pub period_months: u32,    // Analysis period in months
     pub last_updated: u64,
+}
+
+/// Oracle trait for real-time property valuation
+#[ink::trait_definition]
+pub trait Oracle {
+    /// Error type for oracle operations
+    type Error;
+
+    /// Get current property valuation
+    fn get_valuation(&self, property_id: u64) -> Result<PropertyValuation, Self::Error>;
+
+    /// Get valuation with detailed confidence metrics
+    fn get_valuation_with_confidence(
+        &self,
+        property_id: u64,
+    ) -> Result<ValuationWithConfidence, Self::Error>;
+
+    /// Request a new valuation for a property (async pattern)
+    fn request_valuation(&mut self, property_id: u64) -> Result<u64, Self::Error>;
+
+    /// Batch request valuations for multiple properties
+    fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, Self::Error>;
+
+    /// Get historical valuations for a property
+    fn get_historical_valuations(&self, property_id: u64, limit: u32) -> Vec<PropertyValuation>;
+
+    /// Get market volatility for a specific location and property type
+    fn get_market_volatility(
+        &self,
+        property_type: PropertyType,
+        location: String,
+    ) -> Result<VolatilityMetrics, Self::Error>;
+}
+
+/// Oracle Registry trait for managing multiple price feeds and reputation
+#[ink::trait_definition]
+pub trait OracleRegistry {
+    /// Error type for registry operations
+    type Error;
+
+    /// Register a new oracle source
+    fn add_source(&mut self, source: OracleSource) -> Result<(), Self::Error>;
+
+    /// Remove an oracle source
+    fn remove_source(&mut self, source_id: String) -> Result<(), Self::Error>;
+
+    /// Update oracle source reputation based on performance
+    fn update_reputation(&mut self, source_id: String, success: bool) -> Result<(), Self::Error>;
+
+    /// Get oracle source reputation score
+    fn get_reputation(&self, source_id: String) -> Option<u32>;
+
+    /// Slash oracle source for providing invalid data
+    fn slash_source(&mut self, source_id: String, penalty_amount: u128) -> Result<(), Self::Error>;
+
+    /// Check for anomalies in price data
+    fn detect_anomalies(&self, property_id: u64, new_valuation: u128) -> bool;
 }
 
 /// Escrow trait for secure property transfers

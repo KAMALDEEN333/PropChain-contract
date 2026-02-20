@@ -11,6 +11,10 @@ The Property Valuation Oracle provides real-time property valuations for the Pro
 - **Location-Based Adjustments**: Geographic market adjustments
 - **Price Alert System**: Notifications for significant valuation changes
 - **Fallback Mechanisms**: Redundant oracle sources for reliability
+- **Oracle Reputation System**: Performance tracking and automated source management
+- **Slashing System**: Stake-based penalties for malicious or inaccurate data
+- **Gas-Efficient Batching**: Support for multiple property valuation requests in a single transaction
+- **Anomaly Detection**: Advanced validation logic to detect market outliers
 
 ## Architecture
 
@@ -48,6 +52,12 @@ Returns historical valuations (most recent first).
 #### `set_price_alert(property_id: u64, threshold_percentage: u32, alert_address: AccountId)`
 Sets up alerts for price changes exceeding the threshold.
 
+#### `request_property_valuation(property_id: u64) -> Result<u64, OracleError>`
+Initiates a new valuation request for a property.
+
+#### `batch_request_valuations(property_ids: Vec<u64>) -> Result<Vec<u64>, OracleError>`
+Batch requests valuations for multiple properties efficiently.
+
 ### Administrative Functions
 
 #### `add_oracle_source(source: OracleSource) -> Result<(), OracleError>`
@@ -58,6 +68,12 @@ Configures location-based valuation adjustments (admin only).
 
 #### `update_market_trend(trend: MarketTrend) -> Result<(), OracleError>`
 Updates market trend data for volatility calculations (admin only).
+
+#### `update_source_reputation(source_id: String, success: bool) -> Result<(), OracleError>`
+Manages oracle source reputation scores (admin only).
+
+#### `slash_source(source_id: String, penalty: u128) -> Result<(), OracleError>`
+Slashes staked funds for underperforming or malicious sources (admin only).
 
 ## Data Structures
 
