@@ -173,20 +173,6 @@ mod ipfs_metadata {
         pub max_pinned_size_per_property: u64,
     }
 
-    /// Document pinning status
-    #[allow(dead_code)]
-    #[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(
-        feature = "std",
-        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
-    )]
-    pub enum PinStatus {
-        Pinned,
-        Unpinned,
-        Failed,
-        Pending,
-    }
-
     // ============================================================================
     // EVENTS
     // ============================================================================
@@ -426,22 +412,23 @@ mod ipfs_metadata {
 
             // Validate IPFS CIDs if present
             if let Some(ref cid) = metadata.documents_ipfs_cid {
-                self.validate_ipfs_cid(cid)?;
+                self.validate_ipfs_cid(cid.clone())?;
             }
 
             if let Some(ref cid) = metadata.images_ipfs_cid {
-                self.validate_ipfs_cid(cid)?;
+                self.validate_ipfs_cid(cid.clone())?;
             }
 
             if let Some(ref cid) = metadata.legal_docs_ipfs_cid {
-                self.validate_ipfs_cid(cid)?;
+                self.validate_ipfs_cid(cid.clone())?;
             }
 
             Ok(())
         }
 
         /// Validates IPFS CID format
-        pub fn validate_ipfs_cid(&self, cid: &str) -> Result<(), Error> {
+        #[ink(message)]
+        pub fn validate_ipfs_cid(&self, cid: String) -> Result<(), Error> {
             // Basic CID validation
             // CIDv0: starts with "Qm" and is 46 characters
             // CIDv1: starts with "b" and uses base32
@@ -449,28 +436,24 @@ mod ipfs_metadata {
                 return Err(Error::InvalidIpfsCid);
             }
 
-            // CIDv0 validation
             if cid.starts_with("Qm") {
-                if cid.len() != 46 {
-                    return Err(Error::InvalidIpfsCid);
+                // CIDv0: must be exactly 46 characters
+                if cid.len() == 46 {
+                    Ok(())
+                } else {
+                    Err(Error::InvalidIpfsCid)
                 }
-                // Check if it contains only valid base58 characters
-                if !cid.chars().all(|c| {
-                    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)
-                }) {
-                    return Err(Error::InvalidIpfsCid);
-                }
-            }
-            // CIDv1 validation (basic check)
-            else if cid.starts_with('b') {
-                if cid.len() < 10 {
-                    return Err(Error::InvalidIpfsCid);
+            } else if cid.starts_with('b') {
+                // CIDv1: minimum length check
+                if cid.len() >= 10 {
+                    Ok(())
+                } else {
+                    Err(Error::InvalidIpfsCid)
                 }
             } else {
-                return Err(Error::InvalidIpfsCid);
+                // Neither CIDv0 nor CIDv1 format
+                Err(Error::InvalidIpfsCid)
             }
-
-            Ok(())
         }
 
         // ============================================================================
@@ -495,8 +478,7 @@ mod ipfs_metadata {
             // Check access permissions
             self.check_write_access(property_id, caller)?;
 
-            // Validate IPFS CID
-            self.validate_ipfs_cid(&ipfs_cid)?;
+            self.validate_ipfs_cid(ipfs_cid.clone())?;
 
             // Check if document already exists
             if self.cid_to_document.contains(&ipfs_cid) {
@@ -515,13 +497,14 @@ mod ipfs_metadata {
             }
 
             // Validate MIME type if restrictions are set
-            if !self.validation_rules.allowed_mime_types.is_empty()
-                && !self
+            if !self.validation_rules.allowed_mime_types.is_empty() {
+                if !self
                     .validation_rules
                     .allowed_mime_types
                     .contains(&mime_type)
-            {
-                return Err(Error::FileTypeNotAllowed);
+                {
+                    return Err(Error::FileTypeNotAllowed);
+                }
             }
 
             // Increment document counter

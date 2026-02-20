@@ -1,10 +1,19 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use crate::ipfs_metadata::{
-        AccessLevel, DocumentType, Error, IpfsMetadataRegistry, PropertyMetadata, ValidationRules,
-    };
+    use super::*;
+    use ink::prelude::string::String;
+    use ink::prelude::vec::Vec;
     use ink::primitives::Hash;
+    
+    use crate::ipfs_metadata::{
+        IpfsMetadataRegistry,
+        ValidationRules,
+        PropertyMetadata,
+        DocumentType,
+        Error,
+        AccessLevel,
+    };
 
     // Helper function to create default validation rules
     fn default_validation_rules() -> ValidationRules {
@@ -146,7 +155,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert!(result.is_ok());
     }
 
@@ -155,7 +164,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert!(result.is_ok());
     }
 
@@ -164,7 +173,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
@@ -173,7 +182,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbd"; // 45 chars
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
@@ -182,7 +191,7 @@ mod tests {
         let contract = IpfsMetadataRegistry::new();
         let cid = "XmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
-        let result = contract.validate_ipfs_cid(cid);
+        let result = contract.validate_ipfs_cid(cid.to_string());
         assert_eq!(result, Err(Error::InvalidIpfsCid));
     }
 
@@ -403,21 +412,40 @@ mod tests {
             .validate_and_register_metadata(property_id, metadata)
             .unwrap();
 
-        // Register a document that exceeds pin limit
-        let document_id = contract
-            .register_ipfs_document(
+        // Register 6 documents at max_file_size (100 MB each).
+        // The max_pinned_size_per_property is 500 MB, so pinning 5 fills it;
+        // the 6th pin must be rejected with PinLimitExceeded.
+        // Using distinct CIDs (last character differs: A-F).
+        let cids = [
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdA",
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdB",
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdC",
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdD",
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdE",
+            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdF",
+        ];
+
+        let mut document_ids = Vec::new();
+        for (i, cid) in cids.iter().enumerate() {
+            let doc_id = contract.register_ipfs_document(
                 property_id,
-                "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ".to_string(),
+                cid.to_string(),
                 DocumentType::Deed,
-                Hash::from([0x02; 32]),
-                600_000_000, // Exceeds max_pinned_size_per_property
+                Hash::from([(i + 1) as u8; 32]),
+                100_000_000, // 100 MB — within max_file_size
                 "application/pdf".to_string(),
                 false,
-            )
-            .unwrap();
+            ).unwrap();
+            document_ids.push(doc_id);
+        }
 
-        // Try to pin - should fail
-        let result = contract.pin_document(document_id);
+        // Pin the first 5 documents to reach the 500 MB pin limit
+        for &doc_id in &document_ids[..5] {
+            contract.pin_document(doc_id).unwrap();
+        }
+
+        // Pinning the 6th document (100 MB) would bring total to 600 MB > 500 MB limit
+        let result = contract.pin_document(document_ids[5]);
         assert_eq!(result, Err(Error::PinLimitExceeded));
     }
 
@@ -528,7 +556,7 @@ mod tests {
 
     #[ink::test]
     fn test_grant_access_success() {
-        let _accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
         let mut contract = IpfsMetadataRegistry::new();
 
         // Register metadata
@@ -545,7 +573,7 @@ mod tests {
 
     #[ink::test]
     fn test_revoke_access_success() {
-        let _accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
         let mut contract = IpfsMetadataRegistry::new();
 
         // Register metadata
