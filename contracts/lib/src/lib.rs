@@ -84,6 +84,8 @@ mod propchain_contracts {
         pause_info: PauseInfo,
         /// Accounts authorized to pause the contract
         pause_guardians: Mapping<AccountId, bool>,
+        /// Oracle contract address (optional)
+        oracle: Option<AccountId>,
     }
 
     /// Escrow information
@@ -765,6 +767,7 @@ mod propchain_contracts {
                     required_approvals: 2, // Default requirement
                 },
                 pause_guardians: Mapping::default(),
+                oracle: None,
             };
 
             // Emit contract initialization event
@@ -788,6 +791,46 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn admin(&self) -> AccountId {
             self.admin
+        }
+
+        /// Set the oracle contract address
+        #[ink(message)]
+        pub fn set_oracle(&mut self, oracle: AccountId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            if caller != self.admin {
+                return Err(Error::Unauthorized);
+            }
+            self.oracle = Some(oracle);
+            Ok(())
+        }
+
+        /// Returns the oracle contract address
+        #[ink(message)]
+        pub fn oracle(&self) -> Option<AccountId> {
+            self.oracle
+        }
+
+        /// Update property valuation using the oracle
+        #[ink(message)]
+        pub fn update_valuation_from_oracle(&mut self, property_id: u64) -> Result<(), Error> {
+            let oracle_addr = self.oracle.ok_or(Error::OracleError)?;
+            
+            // Use the Oracle trait to perform the cross-contract call
+            use ink::env::call::FromAccountId;
+            let oracle: ink::contract_ref!(Oracle) = FromAccountId::from_account_id(oracle_addr);
+            
+            // Fetch valuation from oracle
+            let valuation = oracle.get_valuation(property_id).map_err(|_| Error::OracleError)?;
+            
+            // Update the property's recorded valuation in its metadata
+            if let Some(mut property) = self.properties.get(&property_id) {
+                property.metadata.valuation = valuation.valuation;
+                self.properties.insert(&property_id, &property);
+            } else {
+                return Err(Error::PropertyNotFound);
+            }
+            
+            Ok(())
         }
 
         /// Changes the admin account (only callable by current admin)
