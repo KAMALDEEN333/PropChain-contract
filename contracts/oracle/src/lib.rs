@@ -22,54 +22,57 @@ mod propchain_oracle {
     /// Property Valuation Oracle storage
     #[ink(storage)]
     pub struct PropertyValuationOracle {
-        /// Admin account
-        admin: AccountId,
+            /// Admin account
+            admin: AccountId,
 
-        /// Property valuations storage
-        pub property_valuations: Mapping<u64, PropertyValuation>,
+            /// Property valuations storage
+            pub property_valuations: Mapping<u64, PropertyValuation>,
 
-        /// Historical valuations per property
-        historical_valuations: Mapping<u64, Vec<PropertyValuation>>,
+            /// Historical valuations per property
+            historical_valuations: Mapping<u64, Vec<PropertyValuation>>,
 
-        /// Oracle sources configuration
-        oracle_sources: Mapping<String, OracleSource>,
+            /// Oracle sources configuration
+            oracle_sources: Mapping<String, OracleSource>,
 
-        /// Active oracle sources list
-        pub active_sources: Vec<String>,
+            /// Active oracle sources list
+            pub active_sources: Vec<String>,
 
-        /// Price alerts configuration
-        pub price_alerts: Mapping<u64, Vec<PriceAlert>>,
+            /// Price alerts configuration
+            pub price_alerts: Mapping<u64, Vec<PriceAlert>>,
 
-        /// Location-based adjustments
-        pub location_adjustments: Mapping<String, LocationAdjustment>,
+            /// Location-based adjustments
+            pub location_adjustments: Mapping<String, LocationAdjustment>,
 
-        /// Market trends data
-        pub market_trends: Mapping<String, MarketTrend>,
+            /// Market trends data
+            pub market_trends: Mapping<String, MarketTrend>,
 
-        /// Comparable properties cache
-        comparable_cache: Mapping<u64, Vec<ComparableProperty>>,
+            /// Comparable properties cache
+            comparable_cache: Mapping<u64, Vec<ComparableProperty>>,
 
-        /// Maximum staleness for price feeds (in seconds)
-        max_price_staleness: u64,
+            /// Maximum staleness for price feeds (in seconds)
+            max_price_staleness: u64,
 
-        /// Minimum sources required for valuation
-        pub min_sources_required: u32,
+            /// Minimum sources required for valuation
+            pub min_sources_required: u32,
 
-        /// Outlier detection threshold (standard deviations)
-        outlier_threshold: u32,
+            /// Outlier detection threshold (standard deviations)
+            outlier_threshold: u32,
 
-        /// Source reputations (0-1000, where 1000 is perfect)
-        pub source_reputations: Mapping<String, u32>,
+            /// Source reputations (0-1000, where 1000 is perfect)
+            pub source_reputations: Mapping<String, u32>,
 
-        /// Source stakes for slashing
-        pub source_stakes: Mapping<String, u128>,
+            /// Source stakes for slashing
+            pub source_stakes: Mapping<String, u128>,
 
-        /// Pending valuation requests: property_id -> timestamp
-        pub pending_requests: Mapping<u64, u64>,
+            /// Pending valuation requests: property_id -> timestamp
+            pub pending_requests: Mapping<u64, u64>,
 
-        /// Request counter for unique request IDs
-        pub request_id_counter: u64,
-    }
+            /// Request counter for unique request IDs
+            pub request_id_counter: u64,
+
+            /// AI valuation contract address
+            ai_valuation_contract: Option<AccountId>,
+        }
 
     /// Events emitted by the oracle
     #[ink(event)]
@@ -120,6 +123,7 @@ mod propchain_oracle {
                 source_stakes: Mapping::default(),
                 pending_requests: Mapping::default(),
                 request_id_counter: 0,
+                ai_valuation_contract: None,
             }
         }
 
@@ -381,6 +385,20 @@ mod propchain_oracle {
 
             Ok(())
         }
+        /// Set AI valuation contract address
+        #[ink(message)]
+        pub fn set_ai_valuation_contract(&mut self, ai_contract: AccountId) -> Result<(), OracleError> {
+            self.ensure_admin()?;
+            self.ai_valuation_contract = Some(ai_contract);
+            Ok(())
+        }
+
+        /// Get AI valuation contract address
+        #[ink(message)]
+        pub fn get_ai_valuation_contract(&self) -> Option<AccountId> {
+            self.ai_valuation_contract
+        }
+
 
         /// Add oracle source (admin only)
         #[ink(message)]
@@ -476,35 +494,50 @@ mod propchain_oracle {
         }
 
         fn get_price_from_source(
-            &self,
-            source: &OracleSource,
-            _property_id: u64,
-        ) -> Result<PriceData, OracleError> {
-            // This is a placeholder for actual price feed integration
-            // In production, this would call Chainlink, Pyth, or other oracles
-            match source.source_type {
-                OracleSourceType::Chainlink => {
-                    // Implement Chainlink integration
-                    Err(OracleError::PriceFeedError)
+                    &self,
+                    source: &OracleSource,
+                    property_id: u64,
+                ) -> Result<PriceData, OracleError> {
+                    // This is a placeholder for actual price feed integration
+                    // In production, this would call Chainlink, Pyth, or other oracles
+                    match source.source_type {
+                        OracleSourceType::Chainlink => {
+                            // Implement Chainlink integration
+                            Err(OracleError::PriceFeedError)
+                        }
+                        OracleSourceType::Pyth => {
+                            // Implement Pyth integration
+                            Err(OracleError::PriceFeedError)
+                        }
+                        OracleSourceType::Substrate => {
+                            // Implement Substrate price feed integration (pallets/OCW)
+                            Err(OracleError::PriceFeedError)
+                        }
+                        OracleSourceType::Manual => {
+                            // Manual price updates only
+                            Err(OracleError::PriceFeedError)
+                        }
+                        OracleSourceType::Custom => {
+                            // Custom oracle logic
+                            Err(OracleError::PriceFeedError)
+                        }
+                        OracleSourceType::AIModel => {
+                            // AI model integration - call AI valuation contract
+                            if let Some(ai_contract) = self.ai_valuation_contract {
+                                // In production, this would make a cross-contract call to AI valuation engine
+                                // For now, return a mock price based on property_id
+                                let mock_price = 500000u128 + (property_id as u128 * 1000);
+                                Ok(PriceData {
+                                    price: mock_price,
+                                    timestamp: self.env().block_timestamp(),
+                                    source: source.id.clone(),
+                                })
+                            } else {
+                                Err(OracleError::PriceFeedError)
+                            }
+                        }
+                    }
                 }
-                OracleSourceType::Pyth => {
-                    // Implement Pyth integration
-                    Err(OracleError::PriceFeedError)
-                }
-                OracleSourceType::Substrate => {
-                    // Implement Substrate price feed integration (pallets/OCW)
-                    Err(OracleError::PriceFeedError)
-                }
-                OracleSourceType::Manual => {
-                    // Manual price updates only
-                    Err(OracleError::PriceFeedError)
-                }
-                OracleSourceType::Custom => {
-                    // Custom oracle logic
-                    Err(OracleError::PriceFeedError)
-                }
-            }
-        }
 
         fn is_price_fresh(&self, price_data: &PriceData) -> bool {
             let current_time = self.env().block_timestamp();
@@ -848,7 +881,6 @@ mod propchain_oracle {
 }
 
 // Re-export the contract and error type
-pub use propchain_oracle::PropertyValuationOracle;
 pub use propchain_traits::OracleError;
 
 #[cfg(test)]
