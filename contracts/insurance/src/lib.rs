@@ -6,17 +6,13 @@
     clippy::needless_borrows_for_generic_args
 )]
 
-
 use ink::storage::Mapping;
 
 /// Decentralized Property Insurance Platform
 #[ink::contract]
 mod propchain_insurance {
     use super::*;
-    use ink::prelude::{
-        string::String,
-        vec::Vec,
-    };
+    use ink::prelude::{string::String, vec::Vec};
 
     // =========================================================================
     // ERROR TYPES
@@ -50,7 +46,15 @@ mod propchain_insurance {
     // DATA TYPES
     // =========================================================================
 
-    #[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum PolicyStatus {
         Active,
@@ -60,7 +64,15 @@ mod propchain_insurance {
         Suspended,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum CoverageType {
         Fire,
@@ -72,7 +84,15 @@ mod propchain_insurance {
         Comprehensive,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum ClaimStatus {
         Pending,
@@ -84,7 +104,15 @@ mod propchain_insurance {
         Disputed,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum RiskLevel {
         VeryLow,
@@ -94,16 +122,18 @@ mod propchain_insurance {
         VeryHigh,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct InsurancePolicy {
         pub policy_id: u64,
         pub property_id: u64,
         pub policyholder: AccountId,
         pub coverage_type: CoverageType,
-        pub coverage_amount: u128,   // Max payout in USD (8 decimals)
-        pub premium_amount: u128,    // Annual premium in native token
-        pub deductible: u128,        // Deductible amount
+        pub coverage_amount: u128, // Max payout in USD (8 decimals)
+        pub premium_amount: u128,  // Annual premium in native token
+        pub deductible: u128,      // Deductible amount
         pub start_time: u64,
         pub end_time: u64,
         pub status: PolicyStatus,
@@ -114,7 +144,9 @@ mod propchain_insurance {
         pub metadata_url: String,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct InsuranceClaim {
         pub claim_id: u64,
@@ -132,7 +164,9 @@ mod propchain_insurance {
         pub rejection_reason: String,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct RiskPool {
         pub pool_id: u64,
@@ -149,38 +183,44 @@ mod propchain_insurance {
         pub is_active: bool,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct RiskAssessment {
         pub property_id: u64,
-        pub location_risk_score: u32,   // 0-100
+        pub location_risk_score: u32,     // 0-100
         pub construction_risk_score: u32, // 0-100
-        pub age_risk_score: u32,        // 0-100
-        pub claims_history_score: u32,  // 0-100 (lower = more claims)
-        pub overall_risk_score: u32,    // 0-100
+        pub age_risk_score: u32,          // 0-100
+        pub claims_history_score: u32,    // 0-100 (lower = more claims)
+        pub overall_risk_score: u32,      // 0-100
         pub risk_level: RiskLevel,
         pub assessed_at: u64,
         pub valid_until: u64,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct PremiumCalculation {
-        pub base_rate: u32,          // Basis points (e.g. 150 = 1.50%)
-        pub risk_multiplier: u32,    // Applied based on risk score (100 = 1.0x)
-        pub coverage_multiplier: u32,// Applied based on coverage type
-        pub annual_premium: u128,    // Final annual premium
-        pub monthly_premium: u128,   // Monthly equivalent
+        pub base_rate: u32,           // Basis points (e.g. 150 = 1.50%)
+        pub risk_multiplier: u32,     // Applied based on risk score (100 = 1.0x)
+        pub coverage_multiplier: u32, // Applied based on coverage type
+        pub annual_premium: u128,     // Final annual premium
+        pub monthly_premium: u128,    // Monthly equivalent
         pub deductible: u128,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct ReinsuranceAgreement {
         pub agreement_id: u64,
         pub reinsurer: AccountId,
         pub coverage_limit: u128,
-        pub retention_limit: u128,   // Our retention before reinsurance activates
+        pub retention_limit: u128, // Our retention before reinsurance activates
         pub premium_ceded_rate: u32, // % of premiums ceded to reinsurer (basis points)
         pub coverage_types: Vec<CoverageType>,
         pub start_time: u64,
@@ -190,7 +230,9 @@ mod propchain_insurance {
         pub total_recoveries: u128,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct InsuranceToken {
         pub token_id: u64,
@@ -202,20 +244,24 @@ mod propchain_insurance {
         pub listed_price: Option<u128>,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct ActuarialModel {
         pub model_id: u64,
         pub coverage_type: CoverageType,
-        pub loss_frequency: u32,      // Expected losses per 1000 policies (basis points)
+        pub loss_frequency: u32, // Expected losses per 1000 policies (basis points)
         pub average_loss_severity: u128, // Average loss size
         pub expected_loss_ratio: u32, // Expected loss ratio (basis points)
-        pub confidence_level: u32,    // 0-100
+        pub confidence_level: u32, // 0-100
         pub last_updated: u64,
         pub data_points: u32,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct UnderwritingCriteria {
         pub max_property_age_years: u32,
@@ -227,13 +273,15 @@ mod propchain_insurance {
         pub min_risk_score: u32,
     }
 
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct PoolLiquidityProvider {
         pub provider: AccountId,
         pub pool_id: u64,
         pub deposited_amount: u128,
-        pub share_percentage: u32,  // In basis points (10000 = 100%)
+        pub share_percentage: u32, // In basis points (10000 = 100%)
         pub deposited_at: u64,
         pub last_reward_claim: u64,
         pub accumulated_rewards: u128,
@@ -295,8 +343,8 @@ mod propchain_insurance {
         claim_cooldowns: Mapping<u64, u64>,
 
         // Platform settings
-        platform_fee_rate: u32,       // Basis points (e.g. 200 = 2%)
-        claim_cooldown_period: u64,   // In seconds
+        platform_fee_rate: u32,     // Basis points (e.g. 200 = 2%)
+        claim_cooldown_period: u64, // In seconds
         min_pool_capital: u128,
     }
 
@@ -454,8 +502,8 @@ mod propchain_insurance {
                 authorized_oracles: Mapping::default(),
                 authorized_assessors: Mapping::default(),
                 claim_cooldowns: Mapping::default(),
-                platform_fee_rate: 200,        // 2%
-                claim_cooldown_period: 2_592_000, // 30 days in seconds
+                platform_fee_rate: 200,            // 2%
+                claim_cooldown_period: 2_592_000,  // 30 days in seconds
                 min_pool_capital: 100_000_000_000, // Minimum pool capital
             }
         }
@@ -499,14 +547,14 @@ mod propchain_insurance {
 
         /// Provide liquidity to a pool
         #[ink(message, payable)]
-        pub fn provide_pool_liquidity(
-            &mut self,
-            pool_id: u64,
-        ) -> Result<(), InsuranceError> {
+        pub fn provide_pool_liquidity(&mut self, pool_id: u64) -> Result<(), InsuranceError> {
             let caller = self.env().caller();
             let amount = self.env().transferred_value();
 
-            let mut pool = self.pools.get(&pool_id).ok_or(InsuranceError::PoolNotFound)?;
+            let mut pool = self
+                .pools
+                .get(&pool_id)
+                .ok_or(InsuranceError::PoolNotFound)?;
             if !pool.is_active {
                 return Err(InsuranceError::PoolNotFound);
             }
@@ -517,17 +565,18 @@ mod propchain_insurance {
 
             // Update liquidity provider record
             let key = (pool_id, caller);
-            let mut provider = self.liquidity_providers.get(&key).unwrap_or(
-                PoolLiquidityProvider {
-                    provider: caller,
-                    pool_id,
-                    deposited_amount: 0,
-                    share_percentage: 0,
-                    deposited_at: self.env().block_timestamp(),
-                    last_reward_claim: self.env().block_timestamp(),
-                    accumulated_rewards: 0,
-                }
-            );
+            let mut provider =
+                self.liquidity_providers
+                    .get(&key)
+                    .unwrap_or(PoolLiquidityProvider {
+                        provider: caller,
+                        pool_id,
+                        deposited_amount: 0,
+                        share_percentage: 0,
+                        deposited_at: self.env().block_timestamp(),
+                        last_reward_claim: self.env().block_timestamp(),
+                        accumulated_rewards: 0,
+                    });
             provider.deposited_amount += amount;
             self.liquidity_providers.insert(&key, &provider);
 
@@ -668,13 +717,17 @@ mod propchain_insurance {
             let now = self.env().block_timestamp();
 
             // Validate pool
-            let mut pool = self.pools.get(&pool_id).ok_or(InsuranceError::PoolNotFound)?;
+            let mut pool = self
+                .pools
+                .get(&pool_id)
+                .ok_or(InsuranceError::PoolNotFound)?;
             if !pool.is_active {
                 return Err(InsuranceError::PoolNotFound);
             }
 
             // Check pool has enough capital for coverage
-            let max_exposure = pool.available_capital
+            let max_exposure = pool
+                .available_capital
                 .saturating_mul(pool.max_coverage_ratio as u128)
                 / 10_000;
             if coverage_amount > max_exposure {
@@ -693,7 +746,8 @@ mod propchain_insurance {
             }
 
             // Calculate required premium
-            let calc = self.calculate_premium(property_id, coverage_amount, coverage_type.clone())?;
+            let calc =
+                self.calculate_premium(property_id, coverage_amount, coverage_type.clone())?;
             if paid < calc.annual_premium {
                 return Err(InsuranceError::InsufficientPremium);
             }
@@ -761,7 +815,10 @@ mod propchain_insurance {
         #[ink(message)]
         pub fn cancel_policy(&mut self, policy_id: u64) -> Result<(), InsuranceError> {
             let caller = self.env().caller();
-            let mut policy = self.policies.get(&policy_id).ok_or(InsuranceError::PolicyNotFound)?;
+            let mut policy = self
+                .policies
+                .get(&policy_id)
+                .ok_or(InsuranceError::PolicyNotFound)?;
 
             if caller != policy.policyholder && caller != self.admin {
                 return Err(InsuranceError::Unauthorized);
@@ -807,7 +864,10 @@ mod propchain_insurance {
             let caller = self.env().caller();
             let now = self.env().block_timestamp();
 
-            let mut policy = self.policies.get(&policy_id).ok_or(InsuranceError::PolicyNotFound)?;
+            let mut policy = self
+                .policies
+                .get(&policy_id)
+                .ok_or(InsuranceError::PolicyNotFound)?;
 
             if policy.policyholder != caller {
                 return Err(InsuranceError::Unauthorized);
@@ -885,7 +945,10 @@ mod propchain_insurance {
                 return Err(InsuranceError::Unauthorized);
             }
 
-            let mut claim = self.claims.get(&claim_id).ok_or(InsuranceError::ClaimNotFound)?;
+            let mut claim = self
+                .claims
+                .get(&claim_id)
+                .ok_or(InsuranceError::ClaimNotFound)?;
             if claim.status != ClaimStatus::Pending && claim.status != ClaimStatus::UnderReview {
                 return Err(InsuranceError::ClaimAlreadyProcessed);
             }
@@ -896,7 +959,10 @@ mod propchain_insurance {
             claim.processed_at = Some(now);
 
             if approved {
-                let policy = self.policies.get(&claim.policy_id).ok_or(InsuranceError::PolicyNotFound)?;
+                let policy = self
+                    .policies
+                    .get(&claim.policy_id)
+                    .ok_or(InsuranceError::PolicyNotFound)?;
 
                 // Apply deductible
                 let payout = if claim.claim_amount > policy.deductible {
@@ -971,7 +1037,8 @@ mod propchain_insurance {
                 total_recoveries: 0,
             };
 
-            self.reinsurance_agreements.insert(&agreement_id, &agreement);
+            self.reinsurance_agreements
+                .insert(&agreement_id, &agreement);
             Ok(agreement_id)
         }
 
@@ -987,7 +1054,10 @@ mod propchain_insurance {
             price: u128,
         ) -> Result<(), InsuranceError> {
             let caller = self.env().caller();
-            let mut token = self.insurance_tokens.get(&token_id).ok_or(InsuranceError::TokenNotFound)?;
+            let mut token = self
+                .insurance_tokens
+                .get(&token_id)
+                .ok_or(InsuranceError::TokenNotFound)?;
 
             if token.owner != caller {
                 return Err(InsuranceError::Unauthorized);
@@ -1008,15 +1078,17 @@ mod propchain_insurance {
 
         /// Purchase an insurance token from the secondary market
         #[ink(message, payable)]
-        pub fn purchase_token(
-            &mut self,
-            token_id: u64,
-        ) -> Result<(), InsuranceError> {
+        pub fn purchase_token(&mut self, token_id: u64) -> Result<(), InsuranceError> {
             let caller = self.env().caller();
             let paid = self.env().transferred_value();
 
-            let mut token = self.insurance_tokens.get(&token_id).ok_or(InsuranceError::TokenNotFound)?;
-            let price = token.listed_price.ok_or(InsuranceError::InvalidParameters)?;
+            let mut token = self
+                .insurance_tokens
+                .get(&token_id)
+                .ok_or(InsuranceError::TokenNotFound)?;
+            let price = token
+                .listed_price
+                .ok_or(InsuranceError::InvalidParameters)?;
 
             if paid < price {
                 return Err(InsuranceError::InsufficientPremium);
@@ -1026,7 +1098,10 @@ mod propchain_insurance {
             let old_owner = seller;
 
             // Transfer the policy to the buyer
-            let policy = self.policies.get(&token.policy_id).ok_or(InsuranceError::PolicyNotFound)?;
+            let policy = self
+                .policies
+                .get(&token.policy_id)
+                .ok_or(InsuranceError::PolicyNotFound)?;
             if policy.status != PolicyStatus::Active {
                 return Err(InsuranceError::PolicyInactive);
             }
@@ -1118,7 +1193,9 @@ mod propchain_insurance {
             min_risk_score: u32,
         ) -> Result<(), InsuranceError> {
             self.ensure_admin()?;
-            self.pools.get(&pool_id).ok_or(InsuranceError::PoolNotFound)?;
+            self.pools
+                .get(&pool_id)
+                .ok_or(InsuranceError::PoolNotFound)?;
 
             let criteria = UnderwritingCriteria {
                 max_property_age_years,
@@ -1364,8 +1441,14 @@ mod propchain_insurance {
                 return Ok(());
             }
 
-            let mut policy = self.policies.get(&policy_id).ok_or(InsuranceError::PolicyNotFound)?;
-            let mut pool = self.pools.get(&policy.pool_id).ok_or(InsuranceError::PoolNotFound)?;
+            let mut policy = self
+                .policies
+                .get(&policy_id)
+                .ok_or(InsuranceError::PolicyNotFound)?;
+            let mut pool = self
+                .pools
+                .get(&policy.pool_id)
+                .ok_or(InsuranceError::PoolNotFound)?;
 
             // Check if reinsurance is needed
             let use_reinsurance = amount > pool.reinsurance_threshold;
@@ -1391,7 +1474,8 @@ mod propchain_insurance {
             self.policies.insert(&policy_id, &policy);
 
             // Update cooldown
-            self.claim_cooldowns.insert(&policy.property_id, &self.env().block_timestamp());
+            self.claim_cooldowns
+                .insert(&policy.property_id, &self.env().block_timestamp());
 
             // Update claim status
             if let Some(mut claim) = self.claims.get(&claim_id) {
@@ -1476,14 +1560,7 @@ mod insurance_tests {
 
     fn add_risk_assessment(contract: &mut PropertyInsurance, property_id: u64) {
         contract
-            .update_risk_assessment(
-                property_id,
-                75,
-                80,
-                85,
-                90,
-                86_400 * 365,
-            )
+            .update_risk_assessment(property_id, 75, 80, 85, 90, 86_400 * 365)
             .expect("risk assessment failed");
     }
 
@@ -1623,8 +1700,12 @@ mod insurance_tests {
     fn test_comprehensive_coverage_higher_premium() {
         let mut contract = setup();
         add_risk_assessment(&mut contract, 1);
-        let fire_calc = contract.calculate_premium(1, 1_000_000_000_000u128, CoverageType::Fire).unwrap();
-        let comp_calc = contract.calculate_premium(1, 1_000_000_000_000u128, CoverageType::Comprehensive).unwrap();
+        let fire_calc = contract
+            .calculate_premium(1, 1_000_000_000_000u128, CoverageType::Fire)
+            .unwrap();
+        let comp_calc = contract
+            .calculate_premium(1, 1_000_000_000_000u128, CoverageType::Comprehensive)
+            .unwrap();
         assert!(comp_calc.annual_premium > fire_calc.annual_premium);
     }
 
@@ -1642,14 +1723,20 @@ mod insurance_tests {
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
 
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
 
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
 
         let result = contract.create_policy(
-            1, CoverageType::Fire, 500_000_000_000u128, pool_id,
-            86_400 * 365, "ipfs://policy-metadata".into(),
+            1,
+            CoverageType::Fire,
+            500_000_000_000u128,
+            pool_id,
+            86_400 * 365,
+            "ipfs://policy-metadata".into(),
         );
         assert!(result.is_ok());
 
@@ -1672,8 +1759,12 @@ mod insurance_tests {
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(1u128);
         let result = contract.create_policy(
-            1, CoverageType::Fire, 500_000_000_000u128, pool_id,
-            86_400 * 365, "ipfs://policy-metadata".into(),
+            1,
+            CoverageType::Fire,
+            500_000_000_000u128,
+            pool_id,
+            86_400 * 365,
+            "ipfs://policy-metadata".into(),
         );
         assert_eq!(result, Err(InsuranceError::InsufficientPremium));
     }
@@ -1686,8 +1777,12 @@ mod insurance_tests {
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(1_000_000_000_000u128);
         let result = contract.create_policy(
-            1, CoverageType::Fire, 100_000u128, 999,
-            86_400 * 365, "ipfs://policy-metadata".into(),
+            1,
+            CoverageType::Fire,
+            100_000u128,
+            999,
+            86_400 * 365,
+            "ipfs://policy-metadata".into(),
         );
         assert_eq!(result, Err(InsuranceError::PoolNotFound));
     }
@@ -1704,10 +1799,21 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
         let result = contract.cancel_policy(policy_id);
         assert!(result.is_ok());
         let policy = contract.get_policy(policy_id).unwrap();
@@ -1722,10 +1828,21 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.charlie);
         let result = contract.cancel_policy(policy_id);
         assert_eq!(result, Err(InsuranceError::Unauthorized));
@@ -1743,11 +1860,27 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let result = contract.submit_claim(policy_id, 10_000_000_000u128, "Fire damage to property".into(), "ipfs://evidence123".into());
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let result = contract.submit_claim(
+            policy_id,
+            10_000_000_000u128,
+            "Fire damage to property".into(),
+            "ipfs://evidence123".into(),
+        );
         assert!(result.is_ok());
         let claim_id = result.unwrap();
         let claim = contract.get_claim(claim_id).unwrap();
@@ -1766,11 +1899,27 @@ mod insurance_tests {
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
         let coverage = 500_000_000_000u128;
-        let calc = contract.calculate_premium(1, coverage, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, coverage, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, coverage, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let result = contract.submit_claim(policy_id, coverage * 2, "Huge fire".into(), "ipfs://evidence".into());
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                coverage,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let result = contract.submit_claim(
+            policy_id,
+            coverage * 2,
+            "Huge fire".into(),
+            "ipfs://evidence".into(),
+        );
         assert_eq!(result, Err(InsuranceError::ClaimExceedsCoverage));
     }
 
@@ -1782,12 +1931,28 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.charlie);
-        let result = contract.submit_claim(policy_id, 1_000u128, "Fraud attempt".into(), "ipfs://x".into());
+        let result = contract.submit_claim(
+            policy_id,
+            1_000u128,
+            "Fraud attempt".into(),
+            "ipfs://x".into(),
+        );
         assert_eq!(result, Err(InsuranceError::Unauthorized));
     }
 
@@ -1804,13 +1969,32 @@ mod insurance_tests {
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
         let coverage = 500_000_000_000u128;
-        let calc = contract.calculate_premium(1, coverage, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, coverage, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, coverage, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let claim_id = contract.submit_claim(policy_id, 10_000_000_000u128, "Fire damage".into(), "ipfs://evidence".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                coverage,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let claim_id = contract
+            .submit_claim(
+                policy_id,
+                10_000_000_000u128,
+                "Fire damage".into(),
+                "ipfs://evidence".into(),
+            )
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.alice);
-        let result = contract.process_claim(claim_id, true, "ipfs://oracle-report".into(), String::new());
+        let result =
+            contract.process_claim(claim_id, true, "ipfs://oracle-report".into(), String::new());
         assert!(result.is_ok());
         let claim = contract.get_claim(claim_id).unwrap();
         assert_eq!(claim.status, ClaimStatus::Paid);
@@ -1825,13 +2009,36 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let claim_id = contract.submit_claim(policy_id, 5_000_000_000u128, "Fraudulent claim".into(), "ipfs://fake-evidence".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let claim_id = contract
+            .submit_claim(
+                policy_id,
+                5_000_000_000u128,
+                "Fraudulent claim".into(),
+                "ipfs://fake-evidence".into(),
+            )
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.alice);
-        let result = contract.process_claim(claim_id, false, "ipfs://oracle-report".into(), "Evidence does not support claim".into());
+        let result = contract.process_claim(
+            claim_id,
+            false,
+            "ipfs://oracle-report".into(),
+            "Evidence does not support claim".into(),
+        );
         assert!(result.is_ok());
         let claim = contract.get_claim(claim_id).unwrap();
         assert_eq!(claim.status, ClaimStatus::Rejected);
@@ -1845,11 +2052,24 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let claim_id = contract.submit_claim(policy_id, 1_000_000u128, "Damage".into(), "ipfs://e".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let claim_id = contract
+            .submit_claim(policy_id, 1_000_000u128, "Damage".into(), "ipfs://e".into())
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.charlie);
         let result = contract.process_claim(claim_id, true, "ipfs://r".into(), String::new());
         assert_eq!(result, Err(InsuranceError::Unauthorized));
@@ -1863,15 +2083,33 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
-        let claim_id = contract.submit_claim(policy_id, 1_000_000u128, "Damage".into(), "ipfs://e".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
+        let claim_id = contract
+            .submit_claim(policy_id, 1_000_000u128, "Damage".into(), "ipfs://e".into())
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.alice);
         contract.authorize_assessor(accounts.charlie).unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.charlie);
-        let result = contract.process_claim(claim_id, false, "ipfs://r".into(), "Insufficient evidence".into());
+        let result = contract.process_claim(
+            claim_id,
+            false,
+            "ipfs://r".into(),
+            "Insufficient evidence".into(),
+        );
         assert!(result.is_ok());
     }
 
@@ -1904,8 +2142,12 @@ mod insurance_tests {
         let accounts = test::default_accounts::<DefaultEnvironment>();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         let result = contract.register_reinsurance(
-            accounts.bob, 1_000_000u128, 100_000u128, 2000,
-            [CoverageType::Fire].to_vec(), 86_400,
+            accounts.bob,
+            1_000_000u128,
+            100_000u128,
+            2000,
+            [CoverageType::Fire].to_vec(),
+            86_400,
         );
         assert_eq!(result, Err(InsuranceError::Unauthorized));
     }
@@ -1922,10 +2164,21 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        let policy_id = contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
+        let policy_id = contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
         let token = contract.get_token(1).unwrap();
         assert_eq!(token.policy_id, policy_id);
         assert_eq!(token.owner, accounts.bob);
@@ -1940,10 +2193,21 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 2);
-        contract.create_policy(1, CoverageType::Fire, 500_000_000_000u128, pool_id, 86_400 * 365, "ipfs://test".into()).unwrap();
+        contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                500_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://test".into(),
+            )
+            .unwrap();
         // Bob lists token 1
         assert!(contract.list_token_for_sale(1, 100_000_000u128).is_ok());
         assert!(contract.get_token_listings().contains(&1));
@@ -1965,9 +2229,8 @@ mod insurance_tests {
     #[ink::test]
     fn test_update_actuarial_model_works() {
         let mut contract = setup();
-        let result = contract.update_actuarial_model(
-            CoverageType::Fire, 50, 50_000_000u128, 4500, 95, 1000,
-        );
+        let result =
+            contract.update_actuarial_model(CoverageType::Fire, 50, 50_000_000u128, 4500, 95, 1000);
         assert!(result.is_ok());
         let model = contract.get_actuarial_model(result.unwrap()).unwrap();
         assert_eq!(model.loss_frequency, 50);
@@ -1983,7 +2246,13 @@ mod insurance_tests {
         let mut contract = setup();
         let pool_id = create_pool(&mut contract);
         let result = contract.set_underwriting_criteria(
-            pool_id, 50, 10_000_000u128, 1_000_000_000_000_000u128, true, 3, 40,
+            pool_id,
+            50,
+            10_000_000u128,
+            1_000_000_000_000_000u128,
+            true,
+            3,
+            40,
         );
         assert!(result.is_ok());
         let criteria = contract.get_underwriting_criteria(pool_id).unwrap();
@@ -2005,7 +2274,10 @@ mod insurance_tests {
     #[ink::test]
     fn test_set_platform_fee_exceeds_max_fails() {
         let mut contract = setup();
-        assert_eq!(contract.set_platform_fee_rate(1001), Err(InsuranceError::InvalidParameters));
+        assert_eq!(
+            contract.set_platform_fee_rate(1001),
+            Err(InsuranceError::InvalidParameters)
+        );
     }
 
     #[ink::test]
@@ -2034,7 +2306,9 @@ mod insurance_tests {
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(5_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
-        let provider = contract.get_liquidity_provider(pool_id, accounts.bob).unwrap();
+        let provider = contract
+            .get_liquidity_provider(pool_id, accounts.bob)
+            .unwrap();
         assert_eq!(provider.deposited_amount, 5_000_000_000_000u128);
         assert_eq!(provider.pool_id, pool_id);
     }
@@ -2051,11 +2325,31 @@ mod insurance_tests {
         test::set_value_transferred::<DefaultEnvironment>(10_000_000_000_000u128);
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
-        let calc = contract.calculate_premium(1, 500_000_000_000u128, CoverageType::Fire).unwrap();
+        let calc = contract
+            .calculate_premium(1, 500_000_000_000u128, CoverageType::Fire)
+            .unwrap();
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(calc.annual_premium * 4);
-        contract.create_policy(1, CoverageType::Fire, 100_000_000_000u128, pool_id, 86_400 * 365, "ipfs://p1".into()).unwrap();
-        contract.create_policy(1, CoverageType::Theft, 100_000_000_000u128, pool_id, 86_400 * 365, "ipfs://p2".into()).unwrap();
+        contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                100_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://p1".into(),
+            )
+            .unwrap();
+        contract
+            .create_policy(
+                1,
+                CoverageType::Theft,
+                100_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://p2".into(),
+            )
+            .unwrap();
         let property_policies = contract.get_property_policies(1);
         assert_eq!(property_policies.len(), 2);
     }
@@ -2069,13 +2363,35 @@ mod insurance_tests {
         contract.provide_pool_liquidity(pool_id).unwrap();
         add_risk_assessment(&mut contract, 1);
         add_risk_assessment(&mut contract, 2);
-        let calc1 = contract.calculate_premium(1, 100_000_000_000u128, CoverageType::Fire).unwrap();
-        let calc2 = contract.calculate_premium(2, 100_000_000_000u128, CoverageType::Flood).unwrap();
+        let calc1 = contract
+            .calculate_premium(1, 100_000_000_000u128, CoverageType::Fire)
+            .unwrap();
+        let calc2 = contract
+            .calculate_premium(2, 100_000_000_000u128, CoverageType::Flood)
+            .unwrap();
         let total = (calc1.annual_premium + calc2.annual_premium) * 2;
         test::set_caller::<DefaultEnvironment>(accounts.bob);
         test::set_value_transferred::<DefaultEnvironment>(total);
-        contract.create_policy(1, CoverageType::Fire, 100_000_000_000u128, pool_id, 86_400 * 365, "ipfs://p1".into()).unwrap();
-        contract.create_policy(2, CoverageType::Flood, 100_000_000_000u128, pool_id, 86_400 * 365, "ipfs://p2".into()).unwrap();
+        contract
+            .create_policy(
+                1,
+                CoverageType::Fire,
+                100_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://p1".into(),
+            )
+            .unwrap();
+        contract
+            .create_policy(
+                2,
+                CoverageType::Flood,
+                100_000_000_000u128,
+                pool_id,
+                86_400 * 365,
+                "ipfs://p2".into(),
+            )
+            .unwrap();
         let holder_policies = contract.get_policyholder_policies(accounts.bob);
         assert_eq!(holder_policies.len(), 2);
     }
