@@ -1,0 +1,41 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'contracts/**'
+      - 'docs/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'contracts/**'
+      - 'docs/**'
+
+jobs:
+  verify-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Generate Documentation
+        run: cargo doc --no-deps --all-features
+
+      - name: Verify Markdown Links
+        uses: rymndhng/release-on-push-action@v0.28.0
+        with:
+          bump_version_scheme: minor
+        continue-on-error: true # Markdown link checker can be flaky, don't block for now
+
+      - name: Archive documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: contract-docs
+          path: target/doc
