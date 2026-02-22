@@ -5,14 +5,9 @@ mod tests {
     use ink::prelude::string::String;
     use ink::prelude::vec::Vec;
     use ink::primitives::Hash;
-    
+
     use crate::ipfs_metadata::{
-        IpfsMetadataRegistry,
-        ValidationRules,
-        PropertyMetadata,
-        DocumentType,
-        Error,
-        AccessLevel,
+        AccessLevel, DocumentType, Error, IpfsMetadataRegistry, PropertyMetadata, ValidationRules,
     };
 
     // Helper function to create default validation rules
@@ -210,7 +205,12 @@ mod tests {
 
         let retrieved = contract.get_metadata(property_id);
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().location, metadata.location);
+        assert_eq!(
+            retrieved
+                .expect("Metadata should exist after registration")
+                .location,
+            metadata.location
+        );
     }
 
     #[ink::test]
@@ -238,7 +238,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Register document
         let ipfs_cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ".to_string();
@@ -255,13 +255,18 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        let document_id = result.unwrap();
+        let document_id = result.expect("Document registration should succeed in test");
         assert_eq!(document_id, 1);
 
         // Verify document was stored
         let document = contract.get_document(document_id);
         assert!(document.is_some());
-        assert_eq!(document.unwrap().ipfs_cid, ipfs_cid);
+        assert_eq!(
+            document
+                .expect("Document should exist after registration")
+                .ipfs_cid,
+            ipfs_cid
+        );
     }
 
     #[ink::test]
@@ -273,7 +278,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Try to register document with invalid CID
         let ipfs_cid = "invalid_cid".to_string();
@@ -301,7 +306,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Try to register document that's too large
         let ipfs_cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ".to_string();
@@ -329,7 +334,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Register first document
         let ipfs_cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ".to_string();
@@ -345,7 +350,7 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Try to register same CID again
         let result = contract.register_ipfs_document(
@@ -374,7 +379,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let document_id = contract
             .register_ipfs_document(
@@ -386,14 +391,16 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Pin document
         let result = contract.pin_document(document_id);
         assert!(result.is_ok());
 
         // Verify it's pinned
-        let document = contract.get_document(document_id).unwrap();
+        let document = contract
+            .get_document(document_id)
+            .expect("Document should exist in test");
         assert!(document.is_pinned);
 
         // Verify pinned size updated
@@ -410,7 +417,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Register 6 documents at max_file_size (100 MB each).
         // The max_pinned_size_per_property is 500 MB, so pinning 5 fills it;
@@ -427,15 +434,17 @@ mod tests {
 
         let mut document_ids = Vec::new();
         for (i, cid) in cids.iter().enumerate() {
-            let doc_id = contract.register_ipfs_document(
-                property_id,
-                cid.to_string(),
-                DocumentType::Deed,
-                Hash::from([(i + 1) as u8; 32]),
-                100_000_000, // 100 MB — within max_file_size
-                "application/pdf".to_string(),
-                false,
-            ).unwrap();
+            let doc_id = contract
+                .register_ipfs_document(
+                    property_id,
+                    cid.to_string(),
+                    DocumentType::Deed,
+                    Hash::from([(i + 1) as u8; 32]),
+                    100_000_000, // 100 MB — within max_file_size
+                    "application/pdf".to_string(),
+                    false,
+                )
+                .unwrap();
             document_ids.push(doc_id);
         }
 
@@ -458,7 +467,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let document_id = contract
             .register_ipfs_document(
@@ -470,7 +479,7 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Pin then unpin
         contract.pin_document(document_id).unwrap();
@@ -478,7 +487,9 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify it's unpinned
-        let document = contract.get_document(document_id).unwrap();
+        let document = contract
+            .get_document(document_id)
+            .expect("Document should exist in test");
         assert!(!document.is_pinned);
 
         // Verify pinned size updated
@@ -499,7 +510,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let content_hash = Hash::from([0x02; 32]);
         let document_id = contract
@@ -512,12 +523,12 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Verify with correct hash
         let result = contract.verify_content_hash(document_id, content_hash);
         assert!(result.is_ok());
-        assert!(result.unwrap());
+        assert!(result.expect("Hash verification should succeed in test"));
     }
 
     #[ink::test]
@@ -529,7 +540,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let content_hash = Hash::from([0x02; 32]);
         let document_id = contract
@@ -542,7 +553,7 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Verify with incorrect hash
         let wrong_hash = Hash::from([0x03; 32]);
@@ -564,7 +575,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Grant access to Bob
         let result = contract.grant_access(property_id, accounts.bob, AccessLevel::Read);
@@ -581,12 +592,12 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Grant then revoke access
         contract
             .grant_access(property_id, accounts.bob, AccessLevel::Read)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
         let result = contract.revoke_access(property_id, accounts.bob);
         assert!(result.is_ok());
     }
@@ -604,7 +615,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Register multiple documents
         for i in 0..3 {
@@ -619,7 +630,7 @@ mod tests {
                     "application/pdf".to_string(),
                     false,
                 )
-                .unwrap();
+                .expect("Metadata registration should succeed in test");
         }
 
         // Get all documents
@@ -636,7 +647,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let ipfs_cid = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ".to_string();
         contract
@@ -649,12 +660,17 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Get document by CID
         let document = contract.get_document_by_cid(ipfs_cid.clone());
         assert!(document.is_some());
-        assert_eq!(document.unwrap().ipfs_cid, ipfs_cid);
+        assert_eq!(
+            document
+                .expect("Document should exist after registration")
+                .ipfs_cid,
+            ipfs_cid
+        );
     }
 
     // ============================================================================
@@ -704,7 +720,7 @@ mod tests {
         let metadata = valid_property_metadata();
         contract
             .validate_and_register_metadata(property_id, metadata)
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         let document_id = contract
             .register_ipfs_document(
@@ -716,7 +732,7 @@ mod tests {
                 "application/pdf".to_string(),
                 false,
             )
-            .unwrap();
+            .expect("Metadata registration should succeed in test");
 
         // Report as malicious
         let result = contract.report_malicious_file(document_id, "Contains malware".to_string());

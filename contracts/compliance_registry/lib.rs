@@ -1131,13 +1131,16 @@ mod compliance_registry {
                 large_transaction_volume: false,
                 source_of_funds_verified: true,
             };
-            contract.update_aml_status(user, true, aml_factors).unwrap();
+            contract.update_aml_status(user, true, aml_factors)
+                .expect("AML status update should succeed in test");
 
             // Update sanctions status
-            contract.update_sanctions_status(user, true, SanctionsList::OFAC).unwrap();
+            contract.update_sanctions_status(user, true, SanctionsList::OFAC)
+                .expect("Sanctions status update should succeed in test");
 
             // Update consent (required for compliance)
-            contract.update_consent(user, ConsentStatus::Given).unwrap();
+            contract.update_consent(user, ConsentStatus::Given)
+                .expect("Consent update should succeed in test");
 
             // Check compliance
             assert!(contract.is_compliant(user));
@@ -1170,7 +1173,7 @@ mod compliance_registry {
                 DocumentType::Passport,
                 BiometricMethod::None,
                 20,
-            ).unwrap();
+            ).expect("KYC verification should succeed in test");
 
             // Update AML with passing status
             let aml_factors = AMLRiskFactors {
@@ -1180,9 +1183,12 @@ mod compliance_registry {
                 large_transaction_volume: false,
                 source_of_funds_verified: true,
             };
-            contract.update_aml_status(user, true, aml_factors).unwrap();
-            contract.update_sanctions_status(user, true, SanctionsList::UN).unwrap();
-            contract.update_consent(user, ConsentStatus::Given).unwrap();
+            contract.update_aml_status(user, true, aml_factors)
+                .expect("AML status update should succeed in test");
+            contract.update_sanctions_status(user, true, SanctionsList::UN)
+                .expect("Sanctions status update should succeed in test");
+            contract.update_consent(user, ConsentStatus::Given)
+                .expect("Consent update should succeed in test");
 
             // User is compliant
             assert!(contract.is_compliant(user));
@@ -1195,7 +1201,8 @@ mod compliance_registry {
                 large_transaction_volume: true,
                 source_of_funds_verified: false,
             };
-            contract.update_aml_status(user, false, high_risk_factors).unwrap();
+            contract.update_aml_status(user, false, high_risk_factors)
+                .expect("AML status update should succeed in test");
 
             // User is no longer compliant
             assert!(!contract.is_compliant(user));

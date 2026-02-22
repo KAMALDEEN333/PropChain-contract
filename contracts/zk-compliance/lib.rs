@@ -910,7 +910,8 @@ mod zk_compliance {
             let now = self.env().block_timestamp();
             let expires_at = now + (365 * 24 * 60 * 60 * 1000);
                     
-            let mut proof = self.zk_proofs.get((caller, age_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, age_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = expires_at;
@@ -941,7 +942,8 @@ mod zk_compliance {
                     
             // Simulate verification
             let now = self.env().block_timestamp();
-            let mut proof = self.zk_proofs.get((caller, income_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, income_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (365 * 24 * 60 * 60 * 1000);
@@ -972,7 +974,8 @@ mod zk_compliance {
                     
             // Simulate verification
             let now = self.env().block_timestamp();
-            let mut proof = self.zk_proofs.get((caller, ai_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, ai_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (365 * 24 * 60 * 60 * 1000);
@@ -1019,7 +1022,8 @@ mod zk_compliance {
             )?;
             
             // Automatically approve if the ZK proof is valid
-            let mut proof = self.zk_proofs.get((caller, tx_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, tx_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (30 * 24 * 60 * 60 * 1000); // 30 days for transaction
@@ -1051,7 +1055,8 @@ mod zk_compliance {
             
             // Simulate verification
             let now = self.env().block_timestamp();
-            let mut proof = self.zk_proofs.get((caller, ownership_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, ownership_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (365 * 24 * 60 * 60 * 1000);
@@ -1090,7 +1095,8 @@ mod zk_compliance {
             // In a real ZK-SNARK implementation, this would verify the proof
             // For now, we'll simulate successful verification
             let now = self.env().block_timestamp();
-            let mut proof = self.zk_proofs.get((caller, ownership_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, ownership_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (365 * 24 * 60 * 60 * 1000);
@@ -1125,7 +1131,8 @@ mod zk_compliance {
             
             // Simulate verification
             let now = self.env().block_timestamp();
-            let mut proof = self.zk_proofs.get((caller, address_proof_id)).unwrap();
+            let mut proof = self.zk_proofs.get((caller, address_proof_id))
+                .ok_or(Error::ProofNotFound)?;
             proof.status = ZkProofStatus::Verified;
             proof.created_at = now;
             proof.expires_at = now + (365 * 24 * 60 * 60 * 1000);
@@ -1343,7 +1350,8 @@ mod zk_compliance {
             assert!(contract.update_privacy_preferences(true, false, 4, vec![1, 2, 3]).is_ok());
 
             // Get privacy preferences
-            let prefs = contract.get_privacy_preferences(user).unwrap();
+            let prefs = contract.get_privacy_preferences(user)
+                .expect("Privacy preferences should exist after update");
             assert_eq!(prefs.allow_analytics, true);
             assert_eq!(prefs.share_data_with_third_party, false);
             assert_eq!(prefs.privacy_level, 4);

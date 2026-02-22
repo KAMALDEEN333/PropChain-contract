@@ -73,6 +73,12 @@ mod property_token {
         total_supply: u64,
         token_counter: u64,
         admin: AccountId,
+
+        // Error logging and monitoring
+        error_counts: Mapping<(AccountId, String), u64>,
+        error_rates: Mapping<String, (u64, u64)>, // (count, window_start)
+        recent_errors: Mapping<u64, ErrorLogEntry>,
+        error_log_counter: u64,
     }
 
     /// Token ID type alias
@@ -144,6 +150,19 @@ mod property_token {
         Failed,
         Recovering,
         Expired,
+    }
+
+    /// Error log entry for monitoring and debugging
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct ErrorLogEntry {
+        pub error_code: String,
+        pub message: String,
+        pub account: AccountId,
+        pub timestamp: u64,
+        pub context: Vec<(String, String)>,
     }
 
     // Events for tracking property token operations
@@ -316,6 +335,12 @@ mod property_token {
                 total_supply: 0,
                 token_counter: 0,
                 admin: caller,
+
+                // Error logging and monitoring
+                error_counts: Mapping::default(),
+                error_rates: Mapping::default(),
+                recent_errors: Mapping::default(),
+                error_log_counter: 0,
             }
         }
 
@@ -342,8 +367,31 @@ mod property_token {
             let caller = self.env().caller();
 
             // Check if caller is authorized to transfer
-            let token_owner = self.token_owner.get(token_id).ok_or(Error::TokenNotFound)?;
+            let token_owner = self.token_owner.get(token_id).ok_or_else(|| {
+                let caller = self.env().caller();
+                self.log_error(
+                    caller,
+                    "TOKEN_NOT_FOUND".to_string(),
+                    format!("Token ID {} does not exist", token_id),
+                    vec![
+                        ("token_id".to_string(), token_id.to_string()),
+                        ("operation".to_string(), "transfer_from".to_string()),
+                    ],
+                );
+                Error::TokenNotFound
+            })?;
             if token_owner != from {
+                let caller = self.env().caller();
+                self.log_error(
+                    caller,
+                    "UNAUTHORIZED".to_string(),
+                    format!("Caller is not authorized to transfer token {}", token_id),
+                    vec![
+                        ("token_id".to_string(), token_id.to_string()),
+                        ("caller".to_string(), format!("{:?}", caller)),
+                        ("owner".to_string(), format!("{:?}", token_owner)),
+                    ],
+                );
                 return Err(Error::Unauthorized);
             }
 
@@ -377,9 +425,30 @@ mod property_token {
         #[ink(message)]
         pub fn approve(&mut self, to: AccountId, token_id: TokenId) -> Result<(), Error> {
             let caller = self.env().caller();
-            let token_owner = self.token_owner.get(token_id).ok_or(Error::TokenNotFound)?;
+            let token_owner = self.token_owner.get(token_id).ok_or_else(|| {
+                self.log_error(
+                    caller,
+                    "TOKEN_NOT_FOUND".to_string(),
+                    format!("Token ID {} does not exist", token_id),
+                    vec![
+                        ("token_id".to_string(), token_id.to_string()),
+                        ("operation".to_string(), "approve".to_string()),
+                    ],
+                );
+                Error::TokenNotFound
+            })?;
 
             if token_owner != caller && !self.is_approved_for_all(token_owner, caller) {
+                self.log_error(
+                    caller,
+                    "UNAUTHORIZED".to_string(),
+                    format!("Caller is not authorized to approve token {}", token_id),
+                    vec![
+                        ("token_id".to_string(), token_id.to_string()),
+                        ("caller".to_string(), format!("{:?}", caller)),
+                        ("owner".to_string(), format!("{:?}", token_owner)),
+                    ],
+                );
                 return Err(Error::Unauthorized);
             }
 
@@ -1396,6 +1465,103 @@ mod property_token {
             let signature_gas = request.required_signatures as u64 * 5000; // Gas per signature
             base_gas + metadata_gas + signature_gas
         }
+
+        /// Log an error for monitoring and debugging
+        fn log_error(
+            &mut self,
+            account: AccountId,
+            error_code: String,
+            message: String,
+            context: Vec<(String, String)>,
+        ) {
+            let timestamp = self.env().block_timestamp();
+
+            // Update error count for this account and error code
+            let key = (account, error_code.clone());
+            let current_count = self.error_counts.get(&key).unwrap_or(0);
+            self.error_counts.insert(&key, &(current_count + 1));
+
+            // Update error rate (1 hour window)
+            let window_duration = 3600_000u64; // 1 hour in milliseconds
+            let rate_key = error_code.clone();
+            let (mut count, window_start) =
+                self.error_rates.get(&rate_key).unwrap_or((0, timestamp));
+
+            if timestamp >= window_start + window_duration {
+                // Reset window
+                count = 1;
+                self.error_rates.insert(&rate_key, &(count, timestamp));
+            } else {
+                count += 1;
+                self.error_rates.insert(&rate_key, &(count, window_start));
+            }
+
+            // Add to recent errors (keep last 100)
+            let log_id = self.error_log_counter;
+            self.error_log_counter = self.error_log_counter.wrapping_add(1);
+
+            // Only keep last 100 errors (simple circular buffer)
+            if log_id >= 100 {
+                let old_id = log_id.wrapping_sub(100);
+                self.recent_errors.remove(&old_id);
+            }
+
+            let error_entry = ErrorLogEntry {
+                error_code: error_code.clone(),
+                message,
+                account,
+                timestamp,
+                context,
+            };
+            self.recent_errors.insert(&log_id, &error_entry);
+        }
+
+        /// Get error count for an account and error code
+        #[ink(message)]
+        pub fn get_error_count(&self, account: AccountId, error_code: String) -> u64 {
+            self.error_counts.get(&(account, error_code)).unwrap_or(0)
+        }
+
+        /// Get error rate for an error code (errors per hour)
+        #[ink(message)]
+        pub fn get_error_rate(&self, error_code: String) -> u64 {
+            let timestamp = self.env().block_timestamp();
+            let window_duration = 3600_000u64; // 1 hour
+
+            if let Some((count, window_start)) = self.error_rates.get(&error_code) {
+                if timestamp >= window_start + window_duration {
+                    0 // Window expired
+                } else {
+                    count
+                }
+            } else {
+                0
+            }
+        }
+
+        /// Get recent error log entries (admin only)
+        #[ink(message)]
+        pub fn get_recent_errors(&self, limit: u32) -> Vec<ErrorLogEntry> {
+            // Only admin can access error logs
+            if self.env().caller() != self.admin {
+                return Vec::new();
+            }
+
+            let mut errors = Vec::new();
+            let start_id = if self.error_log_counter > limit as u64 {
+                self.error_log_counter - limit as u64
+            } else {
+                0
+            };
+
+            for i in start_id..self.error_log_counter {
+                if let Some(entry) = self.recent_errors.get(&i) {
+                    errors.push(entry);
+                }
+            }
+
+            errors
+        }
     }
 
     // Unit tests for the PropertyToken contract
@@ -1430,7 +1596,7 @@ mod property_token {
             let result = contract.register_property_with_token(metadata.clone());
             assert!(result.is_ok());
 
-            let token_id = result.unwrap();
+            let token_id = result.expect("Token registration should succeed in test");
             assert_eq!(token_id, 1);
             assert_eq!(contract.total_supply(), 1);
         }
@@ -1447,7 +1613,9 @@ mod property_token {
                 documents_url: String::from("ipfs://sample-docs"),
             };
 
-            let _token_id = contract.register_property_with_token(metadata).unwrap();
+            let _token_id = contract
+                .register_property_with_token(metadata)
+                .expect("Token registration should succeed in test");
             let _caller = AccountId::from([1u8; 32]);
 
             // Set up mock caller for the test
@@ -1469,7 +1637,9 @@ mod property_token {
                 documents_url: String::from("ipfs://sample-docs"),
             };
 
-            let token_id = contract.register_property_with_token(metadata).unwrap();
+            let token_id = contract
+                .register_property_with_token(metadata)
+                .expect("Token registration should succeed in test");
 
             let accounts = test::default_accounts::<DefaultEnvironment>();
             test::set_caller::<DefaultEnvironment>(accounts.alice);
@@ -1493,7 +1663,9 @@ mod property_token {
                 documents_url: String::from("ipfs://sample-docs"),
             };
 
-            let token_id = contract.register_property_with_token(metadata).unwrap();
+            let token_id = contract
+                .register_property_with_token(metadata)
+                .expect("Token registration should succeed in test");
 
             let _accounts = test::default_accounts::<DefaultEnvironment>();
             test::set_caller::<DefaultEnvironment>(contract.admin());
@@ -1501,7 +1673,10 @@ mod property_token {
             let result = contract.verify_compliance(token_id, true);
             assert!(result.is_ok());
 
-            let compliance_info = contract.compliance_flags.get(&token_id).unwrap();
+            let compliance_info = contract
+                .compliance_flags
+                .get(&token_id)
+                .expect("Compliance info should exist after verification");
             assert!(compliance_info.verified);
         }
     }

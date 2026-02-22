@@ -645,7 +645,7 @@ mod bridge {
 
             let request_id = bridge
                 .initiate_bridge_multisig(1, 2, accounts.bob, 2, Some(50), metadata)
-                .unwrap();
+                .expect("Bridge initiation should succeed in test");
 
             // Now sign it as a bridge operator
             let accounts = test::default_accounts::<DefaultEnvironment>();

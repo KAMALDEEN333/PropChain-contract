@@ -41,10 +41,12 @@ pub mod escrow_tests {
         );
 
         assert!(result.is_ok());
-        let escrow_id = result.unwrap();
+        let escrow_id = result.expect("Escrow creation should succeed in test");
         assert_eq!(escrow_id, 1);
 
-        let escrow = contract.get_escrow(escrow_id).unwrap();
+        let escrow = contract
+            .get_escrow(escrow_id)
+            .expect("Escrow should exist after creation");
         assert_eq!(escrow.property_id, 1);
         assert_eq!(escrow.amount, 1_000_000);
         assert_eq!(escrow.buyer, accounts.alice);
@@ -93,14 +95,16 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         // Deposit funds
         ink::env::test::set_value_transferred::<ink::env::DefaultEnvironment>(1_000_000);
         let result = contract.deposit_funds(escrow_id);
         assert!(result.is_ok());
 
-        let escrow = contract.get_escrow(escrow_id).unwrap();
+        let escrow = contract
+            .get_escrow(escrow_id)
+            .expect("Escrow should exist after deposit");
         assert_eq!(escrow.deposited_amount, 1_000_000);
         assert_eq!(escrow.status, EscrowStatus::Active);
     }
@@ -123,7 +127,7 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         let doc_hash = Hash::from([1u8; 32]);
         let result = contract.upload_document(escrow_id, doc_hash, "Title Deed".to_string());
@@ -155,12 +159,12 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         let doc_hash = Hash::from([1u8; 32]);
         contract
             .upload_document(escrow_id, doc_hash, "Title Deed".to_string())
-            .unwrap();
+            .expect("Document upload should succeed in test");
 
         // Verify document
         let result = contract.verify_document(escrow_id, doc_hash);
@@ -188,12 +192,12 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         let result = contract.add_condition(escrow_id, "Property inspection completed".to_string());
 
         assert!(result.is_ok());
-        let condition_id = result.unwrap();
+        let condition_id = result.expect("Condition addition should succeed in test");
         assert_eq!(condition_id, 1);
 
         let conditions = contract.get_conditions(escrow_id);
@@ -220,11 +224,11 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         let condition_id = contract
             .add_condition(escrow_id, "Property inspection completed".to_string())
-            .unwrap();
+            .expect("Condition addition should succeed in test");
 
         let result = contract.mark_condition_met(escrow_id, condition_id);
         assert!(result.is_ok());
@@ -252,7 +256,7 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         // Alice signs
         let result = contract.sign_approval(escrow_id, ApprovalType::Release);
@@ -288,11 +292,11 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         contract
             .sign_approval(escrow_id, ApprovalType::Release)
-            .unwrap();
+            .expect("Approval signing should succeed in test");
 
         // Try to sign again
         let result = contract.sign_approval(escrow_id, ApprovalType::Release);
@@ -317,19 +321,23 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         let result =
             contract.raise_dispute(escrow_id, "Property condition not as described".to_string());
 
         assert!(result.is_ok());
 
-        let dispute = contract.get_dispute(escrow_id).unwrap();
+        let dispute = contract
+            .get_dispute(escrow_id)
+            .expect("Dispute should exist after raising");
         assert_eq!(dispute.raised_by, accounts.alice);
         assert_eq!(dispute.reason, "Property condition not as described");
         assert!(!dispute.resolved);
 
-        let escrow = contract.get_escrow(escrow_id).unwrap();
+        let escrow = contract
+            .get_escrow(escrow_id)
+            .expect("Escrow should exist in test");
         assert_eq!(escrow.status, EscrowStatus::Disputed);
     }
 
@@ -356,7 +364,7 @@ pub mod escrow_tests {
 
         contract
             .raise_dispute(escrow_id, "Issue".to_string())
-            .unwrap();
+            .expect("Dispute raising should succeed in test");
 
         // Admin resolves dispute
         set_caller(admin);
@@ -364,14 +372,18 @@ pub mod escrow_tests {
 
         assert!(result.is_ok());
 
-        let dispute = contract.get_dispute(escrow_id).unwrap();
+        let dispute = contract
+            .get_dispute(escrow_id)
+            .expect("Dispute should exist after raising");
         assert!(dispute.resolved);
         assert_eq!(
             dispute.resolution,
             Some("Resolved in favor of buyer".to_string())
         );
 
-        let escrow = contract.get_escrow(escrow_id).unwrap();
+        let escrow = contract
+            .get_escrow(escrow_id)
+            .expect("Escrow should exist in test");
         assert_eq!(escrow.status, EscrowStatus::Active);
     }
 
@@ -393,11 +405,11 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         contract
             .raise_dispute(escrow_id, "Issue".to_string())
-            .unwrap();
+            .expect("Dispute raising should succeed in test");
 
         // Non-admin tries to resolve
         set_caller(accounts.bob);
@@ -423,7 +435,7 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         // No conditions - should return true
         let result = contract.check_all_conditions_met(escrow_id);
@@ -432,22 +444,26 @@ pub mod escrow_tests {
         // Add conditions
         let cond1 = contract
             .add_condition(escrow_id, "Condition 1".to_string())
-            .unwrap();
+            .expect("Condition addition should succeed in test");
         let cond2 = contract
             .add_condition(escrow_id, "Condition 2".to_string())
-            .unwrap();
+            .expect("Condition addition should succeed in test");
 
         // Not all met
         let result = contract.check_all_conditions_met(escrow_id);
         assert_eq!(result, Ok(false));
 
         // Mark first condition met
-        contract.mark_condition_met(escrow_id, cond1).unwrap();
+        contract
+            .mark_condition_met(escrow_id, cond1)
+            .expect("Marking condition met should succeed in test");
         let result = contract.check_all_conditions_met(escrow_id);
         assert_eq!(result, Ok(false));
 
         // Mark second condition met
-        contract.mark_condition_met(escrow_id, cond2).unwrap();
+        contract
+            .mark_condition_met(escrow_id, cond2)
+            .expect("Marking condition met should succeed in test");
         let result = contract.check_all_conditions_met(escrow_id);
         assert_eq!(result, Ok(true));
     }
@@ -470,16 +486,16 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
         // Perform some actions
         contract
             .add_condition(escrow_id, "Test condition".to_string())
-            .unwrap();
+            .expect("Condition addition should succeed in test");
         let doc_hash = Hash::from([1u8; 32]);
         contract
             .upload_document(escrow_id, doc_hash, "Test doc".to_string())
-            .unwrap();
+            .expect("Document upload should succeed in test");
 
         // Check audit trail
         let audit_trail = contract.get_audit_trail(escrow_id);
@@ -539,9 +555,11 @@ pub mod escrow_tests {
                 2,
                 None,
             )
-            .unwrap();
+            .expect("Escrow creation should succeed in test");
 
-        let config = contract.get_multi_sig_config(escrow_id).unwrap();
+        let config = contract
+            .get_multi_sig_config(escrow_id)
+            .expect("Multi-sig config should exist in test");
         assert_eq!(config.required_signatures, 2);
         assert_eq!(config.signers, participants);
     }

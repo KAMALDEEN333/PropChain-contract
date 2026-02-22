@@ -264,7 +264,8 @@ pub trait Oracle {
 
     /// Batch request valuations for multiple properties
     #[ink(message)]
-    fn batch_request_valuations(&mut self, property_ids: Vec<u64>) -> Result<Vec<u64>, OracleError>;
+    fn batch_request_valuations(&mut self, property_ids: Vec<u64>)
+        -> Result<Vec<u64>, OracleError>;
 
     /// Get historical valuations for a property
     #[ink(message)]

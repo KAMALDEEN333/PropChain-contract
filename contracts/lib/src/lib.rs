@@ -10,6 +10,10 @@ use ink::storage::Mapping;
 // Re-export traits
 pub use propchain_traits::*;
 
+// Export error handling utilities
+#[cfg(feature = "std")]
+pub mod error_handling;
+
 #[ink::contract]
 mod propchain_contracts {
     use super::*;
@@ -814,14 +818,16 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn update_valuation_from_oracle(&mut self, property_id: u64) -> Result<(), Error> {
             let oracle_addr = self.oracle.ok_or(Error::OracleError)?;
-            
+
             // Use the Oracle trait to perform the cross-contract call
             use ink::env::call::FromAccountId;
             let oracle: ink::contract_ref!(Oracle) = FromAccountId::from_account_id(oracle_addr);
-            
+
             // Fetch valuation from oracle
-            let valuation = oracle.get_valuation(property_id).map_err(|_| Error::OracleError)?;
-            
+            let valuation = oracle
+                .get_valuation(property_id)
+                .map_err(|_| Error::OracleError)?;
+
             // Update the property's recorded valuation in its metadata
             if let Some(mut property) = self.properties.get(&property_id) {
                 property.metadata.valuation = valuation.valuation;
@@ -829,7 +835,7 @@ mod propchain_contracts {
             } else {
                 return Err(Error::PropertyNotFound);
             }
-            
+
             Ok(())
         }
 
