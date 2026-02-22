@@ -119,7 +119,7 @@ pub struct PropertyValuation {
 }
 
 /// Valuation method enumeration
-#[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode)]
 #[cfg_attr(
     feature = "std",
     derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
@@ -129,6 +129,7 @@ pub enum ValuationMethod {
     Manual,     // Manual appraisal
     MarketData, // Based on market comparables
     Hybrid,     // Combination of methods
+    AIValuation, // AI-powered machine learning valuation
 }
 
 /// Valuation with confidence metrics
@@ -204,7 +205,7 @@ pub struct OracleSource {
 }
 
 /// Oracle source type enumeration
-#[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode)]
 #[cfg_attr(
     feature = "std",
     derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
@@ -215,6 +216,7 @@ pub enum OracleSourceType {
     Substrate,
     Custom,
     Manual,
+    AIModel, // AI-powered valuation model
 }
 
 /// Location-based adjustment factors
