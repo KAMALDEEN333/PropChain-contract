@@ -4948,6 +4948,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "propchain-analytics"
+version = "1.0.0"
+dependencies = [
+ "ink 5.1.1",
+ "parity-scale-codec",
+ "propchain-traits",
+ "scale-info",
+]
+
+[[package]]
 name = "propchain-bridge"
 version = "1.0.0"
 dependencies = [
