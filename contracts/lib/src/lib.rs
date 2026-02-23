@@ -90,6 +90,8 @@ mod propchain_contracts {
         pause_guardians: Mapping<AccountId, bool>,
         /// Oracle contract address (optional)
         oracle: Option<AccountId>,
+        /// Fee manager contract for dynamic fees and market mechanism (optional)
+        fee_manager: Option<AccountId>,
     }
 
     /// Escrow information
@@ -772,6 +774,7 @@ mod propchain_contracts {
                 },
                 pause_guardians: Mapping::default(),
                 oracle: None,
+                fee_manager: None,
             };
 
             // Emit contract initialization event
@@ -812,6 +815,39 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn oracle(&self) -> Option<AccountId> {
             self.oracle
+        }
+
+        /// Set the fee manager contract address (admin only)
+        #[ink(message)]
+        pub fn set_fee_manager(
+            &mut self,
+            fee_manager: Option<AccountId>,
+        ) -> Result<(), Error> {
+            let caller = self.env().caller();
+            if caller != self.admin {
+                return Err(Error::Unauthorized);
+            }
+            self.fee_manager = fee_manager;
+            Ok(())
+        }
+
+        /// Returns the fee manager contract address
+        #[ink(message)]
+        pub fn get_fee_manager(&self) -> Option<AccountId> {
+            self.fee_manager
+        }
+
+        /// Get dynamic fee for an operation (calls fee manager if set; otherwise returns 0)
+        #[ink(message)]
+        pub fn get_dynamic_fee(&self, operation: FeeOperation) -> u128 {
+            let fee_manager_addr = match self.fee_manager {
+                Some(addr) => addr,
+                None => return 0,
+            };
+            use ink::env::call::FromAccountId;
+            let fee_manager: ink::contract_ref!(DynamicFeeProvider) =
+                FromAccountId::from_account_id(fee_manager_addr);
+            fee_manager.get_recommended_fee(operation)
         }
 
         /// Update property valuation using the oracle
