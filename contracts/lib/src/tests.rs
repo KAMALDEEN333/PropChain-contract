@@ -1852,4 +1852,16 @@ mod tests {
         assert!(contract.set_fee_manager(None).is_ok());
         assert_eq!(contract.get_fee_manager(), None);
     }
+
+    // ============================================================================
+    // COMPLIANCE INTEGRATION (Issue #45)
+    // ============================================================================
+
+    #[ink::test]
+    fn test_check_account_compliance_without_registry_returns_true() {
+        let contract = PropertyRegistry::new();
+        let accounts = default_accounts();
+        assert_eq!(contract.check_account_compliance(accounts.alice), Ok(true));
+        assert_eq!(contract.check_account_compliance(accounts.bob), Ok(true));
+    }
 }

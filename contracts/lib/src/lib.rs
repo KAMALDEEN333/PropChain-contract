@@ -922,33 +922,37 @@ mod propchain_contracts {
             self.compliance_registry
         }
 
-        /// Helper: Check compliance for an account
-        /// Returns Ok if compliant or no registry set, Err otherwise
-        fn check_compliance(&self, _account: AccountId) -> Result<(), Error> {
-            // If no compliance registry is set, skip check
-            if self.compliance_registry.is_none() {
-                return Ok(());
+        /// Helper: Check compliance for an account via the compliance registry (Issue #45).
+        /// Returns Ok if compliant or no registry set, Err(NotCompliant) or Err(ComplianceCheckFailed) otherwise.
+        fn check_compliance(&self, account: AccountId) -> Result<(), Error> {
+            let registry_addr = match self.compliance_registry {
+                Some(addr) => addr,
+                None => return Ok(()),
+            };
+
+            use ink::env::call::FromAccountId;
+            let registry: ink::contract_ref!(ComplianceChecker) =
+                FromAccountId::from_account_id(registry_addr);
+
+            let is_compliant = registry.is_compliant(account);
+
+            if !is_compliant {
+                return Err(Error::NotCompliant);
             }
-
-            // In a real implementation, this would make a cross-contract call
-            // to the compliance registry to check if the account is compliant.
-            // For now, we'll implement a basic check.
-            //
-            // Example cross-contract call (commented out):
-            // let registry = self.compliance_registry.unwrap();
-            // let is_compliant: bool = ink::env::call::build_call::<Environment>()
-            //     .call(registry)
-            //     .exec_input(...)
-            //     .returns::<bool>()
-            //     .invoke();
-            //
-            // if !is_compliant {
-            //     return Err(Error::NotCompliant);
-            // }
-
-            // For demonstration, we'll just return Ok
-            // In production, implement actual cross-contract call
             Ok(())
+        }
+
+        /// Check if an account is compliant (delegates to registry when set). For use by frontends.
+        #[ink(message)]
+        pub fn check_account_compliance(&self, account: AccountId) -> Result<bool, Error> {
+            if self.compliance_registry.is_none() {
+                return Ok(true);
+            }
+            let registry_addr = self.compliance_registry.unwrap();
+            use ink::env::call::FromAccountId;
+            let registry: ink::contract_ref!(ComplianceChecker) =
+                FromAccountId::from_account_id(registry_addr);
+            Ok(registry.is_compliant(account))
         }
 
         /// Helper to check if contract is paused
