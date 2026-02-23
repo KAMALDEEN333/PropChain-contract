@@ -888,6 +888,7 @@ mod oracle_tests {
     use super::*;
     // use ink::codegen::env::Env; // Removed invalid import
     use ink::env::{test, DefaultEnvironment};
+    use crate::propchain_oracle::PropertyValuationOracle;
 
     fn setup_oracle() -> PropertyValuationOracle {
         let accounts = test::default_accounts::<DefaultEnvironment>();
