@@ -11,6 +11,7 @@ members = [
     "contracts/property-token",
     "contracts/insurance",
     "contracts/analytics",
+    "contracts/fees",
 ]
 resolver = "2"
 
