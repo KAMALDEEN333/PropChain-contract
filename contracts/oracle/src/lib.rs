@@ -525,7 +525,7 @@ mod propchain_oracle {
                 }
                 OracleSourceType::AIModel => {
                     // AI model integration - call AI valuation contract
-                    if let Some(ai_contract) = self.ai_valuation_contract {
+                    if let Some(_ai_contract) = self.ai_valuation_contract {
                         // In production, this would make a cross-contract call to AI valuation engine
                         // For now, return a mock price based on property_id
                         let mock_price = 500000u128 + (property_id as u128 * 1000);

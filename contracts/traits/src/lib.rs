@@ -661,3 +661,61 @@ pub struct ChainBridgeInfo {
     pub confirmation_blocks: u32, // Blocks to wait for confirmation
     pub supported_tokens: Vec<TokenId>,
 }
+
+// =============================================================================
+// Dynamic Fee and Market Mechanism (Issue #38)
+// =============================================================================
+
+/// Operation types for dynamic fee calculation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, scale::Encode, scale::Decode)]
+#[cfg_attr(
+    feature = "std",
+    derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+)]
+pub enum FeeOperation {
+    RegisterProperty,
+    TransferProperty,
+    UpdateMetadata,
+    CreateEscrow,
+    ReleaseEscrow,
+    PremiumListingBid,
+    IssueBadge,
+    OracleUpdate,
+}
+
+/// Trait for dynamic fee provider (implemented by fee manager contract)
+#[ink::trait_definition]
+pub trait DynamicFeeProvider {
+    /// Get recommended fee for an operation (market-based price discovery)
+    #[ink(message)]
+    fn get_recommended_fee(&self, operation: FeeOperation) -> u128;
+}
+
+// =============================================================================
+// Compliance and Regulatory Framework (Issue #45)
+// =============================================================================
+
+/// Transaction type for compliance rules engine
+#[derive(Debug, Clone, Copy, PartialEq, Eq, scale::Encode, scale::Decode)]
+#[cfg_attr(
+    feature = "std",
+    derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+)]
+pub enum ComplianceOperation {
+    RegisterProperty,
+    TransferProperty,
+    UpdateMetadata,
+    CreateEscrow,
+    ReleaseEscrow,
+    ListForSale,
+    Purchase,
+    BridgeTransfer,
+}
+
+/// Trait for compliance registry (used by PropertyRegistry for automated checks)
+#[ink::trait_definition]
+pub trait ComplianceChecker {
+    /// Returns true if the account meets current compliance requirements
+    #[ink(message)]
+    fn is_compliant(&self, account: ink::primitives::AccountId) -> bool;
+}

@@ -1,8 +1,9 @@
 [package]
-name = "compliance_registry"
-version = "0.1.0"
+name = "propchain-fees"
+version = "1.0.0"
+authors = ["PropChain Team <dev@propchain.io>"]
 edition = "2021"
-description = "Multi-jurisdictional compliance and regulatory framework for PropChain"
+description = "Dynamic fee and market mechanism for PropChain"
 
 [dependencies]
 ink = { workspace = true }
@@ -10,11 +11,8 @@ scale = { workspace = true }
 scale-info = { workspace = true }
 propchain-traits = { path = "../traits", default-features = false }
 
-[dev-dependencies]
-ink_e2e = "5.0.0"
-
 [lib]
-path = "lib.rs"
+path = "src/lib.rs"
 
 [features]
 default = ["std"]

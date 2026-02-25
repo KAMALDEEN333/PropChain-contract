@@ -25,6 +25,7 @@ mod propchain_analytics {
         Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    #[allow(dead_code)]
     pub struct PortfolioPerformance {
         pub total_value: u128,
         pub property_count: u64,
@@ -48,6 +49,7 @@ mod propchain_analytics {
         Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    #[allow(dead_code)]
     pub struct UserBehavior {
         pub account: AccountId,
         pub total_interactions: u64,

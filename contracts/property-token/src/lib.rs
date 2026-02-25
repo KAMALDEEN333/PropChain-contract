@@ -37,6 +37,11 @@ mod property_token {
         DuplicateBridgeRequest,
         BridgeTimeout,
         AlreadySigned,
+        InsufficientBalance,
+        InvalidAmount,
+        ProposalNotFound,
+        ProposalClosed,
+        AskNotFound,
     }
 
     /// Property Token contract that maintains compatibility with ERC-721 and ERC-1155
@@ -81,6 +86,19 @@ mod property_token {
         error_rates: Mapping<String, (u64, u64)>, // (count, window_start)
         recent_errors: Mapping<u64, ErrorLogEntry>,
         error_log_counter: u64,
+
+        total_shares: Mapping<TokenId, u128>,
+        dividends_per_share: Mapping<TokenId, u128>,
+        dividend_credit: Mapping<(AccountId, TokenId), u128>,
+        dividend_balance: Mapping<(AccountId, TokenId), u128>,
+        proposal_counter: Mapping<TokenId, u64>,
+        proposals: Mapping<(TokenId, u64), Proposal>,
+        votes_cast: Mapping<(TokenId, u64, AccountId), bool>,
+        asks: Mapping<(TokenId, AccountId), Ask>,
+        escrowed_shares: Mapping<(TokenId, AccountId), u128>,
+        last_trade_price: Mapping<TokenId, u128>,
+        compliance_registry: Option<AccountId>,
+        tax_records: Mapping<(AccountId, TokenId), TaxRecord>,
     }
 
     /// Token ID type alias
@@ -165,6 +183,78 @@ mod property_token {
         pub account: AccountId,
         pub timestamp: u64,
         pub context: Vec<(String, String)>,
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct Proposal {
+        pub id: u64,
+        pub token_id: TokenId,
+        pub description_hash: Hash,
+        pub quorum: u128,
+        pub for_votes: u128,
+        pub against_votes: u128,
+        pub status: ProposalStatus,
+        pub created_at: u64,
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub enum ProposalStatus {
+        Open,
+        Executed,
+        Rejected,
+        Closed,
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct Ask {
+        pub token_id: TokenId,
+        pub seller: AccountId,
+        pub price_per_share: u128,
+        pub amount: u128,
+        pub created_at: u64,
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct TaxRecord {
+        pub dividends_received: u128,
+        pub shares_sold: u128,
+        pub proceeds: u128,
     }
 
     // Events for tracking property token operations
@@ -289,6 +379,101 @@ mod property_token {
         pub recovery_action: RecoveryAction,
     }
 
+    #[ink(event)]
+    pub struct SharesIssued {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub to: AccountId,
+        pub amount: u128,
+    }
+
+    #[ink(event)]
+    pub struct SharesRedeemed {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub from: AccountId,
+        pub amount: u128,
+    }
+
+    #[ink(event)]
+    pub struct DividendsDeposited {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        pub amount: u128,
+        pub per_share: u128,
+    }
+
+    #[ink(event)]
+    pub struct DividendsWithdrawn {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub account: AccountId,
+        pub amount: u128,
+    }
+
+    #[ink(event)]
+    pub struct ProposalCreated {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub proposal_id: u64,
+        pub quorum: u128,
+    }
+
+    #[ink(event)]
+    pub struct Voted {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub proposal_id: u64,
+        #[ink(topic)]
+        pub voter: AccountId,
+        pub support: bool,
+        pub weight: u128,
+    }
+
+    #[ink(event)]
+    pub struct ProposalExecuted {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub proposal_id: u64,
+        pub passed: bool,
+    }
+
+    #[ink(event)]
+    pub struct AskPlaced {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub seller: AccountId,
+        pub price_per_share: u128,
+        pub amount: u128,
+    }
+
+    #[ink(event)]
+    pub struct AskCancelled {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub seller: AccountId,
+    }
+
+    #[ink(event)]
+    pub struct SharesPurchased {
+        #[ink(topic)]
+        pub token_id: TokenId,
+        #[ink(topic)]
+        pub seller: AccountId,
+        #[ink(topic)]
+        pub buyer: AccountId,
+        pub amount: u128,
+        pub price_per_share: u128,
+    }
+
     impl PropertyToken {
         /// Creates a new PropertyToken contract
         #[ink(constructor)]
@@ -345,6 +530,19 @@ mod property_token {
                 error_rates: Mapping::default(),
                 recent_errors: Mapping::default(),
                 error_log_counter: 0,
+
+                total_shares: Mapping::default(),
+                dividends_per_share: Mapping::default(),
+                dividend_credit: Mapping::default(),
+                dividend_balance: Mapping::default(),
+                proposal_counter: Mapping::default(),
+                proposals: Mapping::default(),
+                votes_cast: Mapping::default(),
+                asks: Mapping::default(),
+                escrowed_shares: Mapping::default(),
+                last_trade_price: Mapping::default(),
+                compliance_registry: None,
+                tax_records: Mapping::default(),
             }
         }
 
@@ -578,6 +776,465 @@ mod property_token {
                 self.env().account_id(),
                 token_id
             ))
+        }
+
+        #[ink(message)]
+        pub fn set_compliance_registry(&mut self, registry: AccountId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            if caller != self.admin {
+                return Err(Error::Unauthorized);
+            }
+            self.compliance_registry = Some(registry);
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn total_shares(&self, token_id: TokenId) -> u128 {
+            self.total_shares.get(token_id).unwrap_or(0)
+        }
+
+        #[ink(message)]
+        pub fn share_balance_of(&self, owner: AccountId, token_id: TokenId) -> u128 {
+            self.balances.get((owner, token_id)).unwrap_or(0)
+        }
+
+        #[ink(message)]
+        pub fn issue_shares(
+            &mut self,
+            token_id: TokenId,
+            to: AccountId,
+            amount: u128,
+        ) -> Result<(), Error> {
+            if amount == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let caller = self.env().caller();
+            let owner = self.token_owner.get(token_id).ok_or(Error::TokenNotFound)?;
+            if caller != self.admin && caller != owner {
+                return Err(Error::Unauthorized);
+            }
+            let bal = self.balances.get((to, token_id)).unwrap_or(0);
+            self.balances
+                .insert((to, token_id), &(bal.saturating_add(amount)));
+            let ts = self.total_shares.get(token_id).unwrap_or(0);
+            self.total_shares
+                .insert(token_id, &(ts.saturating_add(amount)));
+            self.update_dividend_credit_on_change(to, token_id)?;
+            self.env().emit_event(SharesIssued {
+                token_id,
+                to,
+                amount,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn redeem_shares(
+            &mut self,
+            token_id: TokenId,
+            from: AccountId,
+            amount: u128,
+        ) -> Result<(), Error> {
+            if amount == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let caller = self.env().caller();
+            if caller != from && !self.is_approved_for_all(from, caller) {
+                return Err(Error::Unauthorized);
+            }
+            let bal = self.balances.get((from, token_id)).unwrap_or(0);
+            if bal < amount {
+                return Err(Error::InsufficientBalance);
+            }
+            self.balances
+                .insert((from, token_id), &(bal.saturating_sub(amount)));
+            let ts = self.total_shares.get(token_id).unwrap_or(0);
+            self.total_shares
+                .insert(token_id, &(ts.saturating_sub(amount)));
+            self.update_dividend_credit_on_change(from, token_id)?;
+            self.env().emit_event(SharesRedeemed {
+                token_id,
+                from,
+                amount,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn transfer_shares(
+            &mut self,
+            from: AccountId,
+            to: AccountId,
+            token_id: TokenId,
+            amount: u128,
+        ) -> Result<(), Error> {
+            if amount == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let caller = self.env().caller();
+            if caller != from && !self.is_approved_for_all(from, caller) {
+                return Err(Error::Unauthorized);
+            }
+            if !self.pass_compliance(from)? || !self.pass_compliance(to)? {
+                return Err(Error::ComplianceFailed);
+            }
+            let from_balance = self.balances.get((from, token_id)).unwrap_or(0);
+            if from_balance < amount {
+                return Err(Error::InsufficientBalance);
+            }
+            self.update_dividend_credit_on_change(from, token_id)?;
+            self.update_dividend_credit_on_change(to, token_id)?;
+            self.balances
+                .insert((from, token_id), &(from_balance.saturating_sub(amount)));
+            let to_balance = self.balances.get((to, token_id)).unwrap_or(0);
+            self.balances
+                .insert((to, token_id), &(to_balance.saturating_add(amount)));
+            Ok(())
+        }
+
+        #[ink(message, payable)]
+        pub fn deposit_dividends(&mut self, token_id: TokenId) -> Result<(), Error> {
+            let value = self.env().transferred_value();
+            if value == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let ts = self.total_shares.get(token_id).unwrap_or(0);
+            if ts == 0 {
+                return Err(Error::InvalidRequest);
+            }
+            let scaling: u128 = 1_000_000_000_000;
+            let add = value.saturating_mul(scaling) / ts;
+            let cur = self.dividends_per_share.get(token_id).unwrap_or(0);
+            let new = cur.saturating_add(add);
+            self.dividends_per_share.insert(token_id, &new);
+            self.env().emit_event(DividendsDeposited {
+                token_id,
+                amount: value,
+                per_share: add,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn withdraw_dividends(&mut self, token_id: TokenId) -> Result<u128, Error> {
+            let caller = self.env().caller();
+            self.update_dividend_credit_on_change(caller, token_id)?;
+            let owed = self.dividend_balance.get((caller, token_id)).unwrap_or(0);
+            if owed == 0 {
+                return Ok(0);
+            }
+            self.dividend_balance.insert((caller, token_id), &0u128);
+            match self.env().transfer(caller, owed) {
+                Ok(_) => {
+                    let mut rec = self
+                        .tax_records
+                        .get((caller, token_id))
+                        .unwrap_or(TaxRecord {
+                            dividends_received: 0,
+                            shares_sold: 0,
+                            proceeds: 0,
+                        });
+                    rec.dividends_received = rec.dividends_received.saturating_add(owed);
+                    self.tax_records.insert((caller, token_id), &rec);
+                    self.env().emit_event(DividendsWithdrawn {
+                        token_id,
+                        account: caller,
+                        amount: owed,
+                    });
+                    Ok(owed)
+                }
+                Err(_) => Err(Error::InvalidRequest),
+            }
+        }
+
+        #[ink(message)]
+        pub fn create_proposal(
+            &mut self,
+            token_id: TokenId,
+            quorum: u128,
+            description_hash: Hash,
+        ) -> Result<u64, Error> {
+            let owner = self.token_owner.get(token_id).ok_or(Error::TokenNotFound)?;
+            let caller = self.env().caller();
+            if caller != self.admin && caller != owner {
+                return Err(Error::Unauthorized);
+            }
+            let counter = self.proposal_counter.get(token_id).unwrap_or(0) + 1;
+            self.proposal_counter.insert(token_id, &counter);
+            let proposal = Proposal {
+                id: counter,
+                token_id,
+                description_hash,
+                quorum,
+                for_votes: 0,
+                against_votes: 0,
+                status: ProposalStatus::Open,
+                created_at: self.env().block_timestamp(),
+            };
+            self.proposals.insert((token_id, counter), &proposal);
+            self.env().emit_event(ProposalCreated {
+                token_id,
+                proposal_id: counter,
+                quorum,
+            });
+            Ok(counter)
+        }
+
+        #[ink(message)]
+        pub fn vote(
+            &mut self,
+            token_id: TokenId,
+            proposal_id: u64,
+            support: bool,
+        ) -> Result<(), Error> {
+            let mut proposal = self
+                .proposals
+                .get((token_id, proposal_id))
+                .ok_or(Error::ProposalNotFound)?;
+            if proposal.status != ProposalStatus::Open {
+                return Err(Error::ProposalClosed);
+            }
+            let voter = self.env().caller();
+            if self
+                .votes_cast
+                .get((token_id, proposal_id, voter))
+                .unwrap_or(false)
+            {
+                return Err(Error::Unauthorized);
+            }
+            let weight = self.balances.get((voter, token_id)).unwrap_or(0);
+            if support {
+                proposal.for_votes = proposal.for_votes.saturating_add(weight);
+            } else {
+                proposal.against_votes = proposal.against_votes.saturating_add(weight);
+            }
+            self.proposals.insert((token_id, proposal_id), &proposal);
+            self.votes_cast
+                .insert((token_id, proposal_id, voter), &true);
+            self.env().emit_event(Voted {
+                token_id,
+                proposal_id,
+                voter,
+                support,
+                weight,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn execute_proposal(
+            &mut self,
+            token_id: TokenId,
+            proposal_id: u64,
+        ) -> Result<bool, Error> {
+            let mut proposal = self
+                .proposals
+                .get((token_id, proposal_id))
+                .ok_or(Error::ProposalNotFound)?;
+            if proposal.status != ProposalStatus::Open {
+                return Err(Error::ProposalClosed);
+            }
+            let passed = proposal.for_votes >= proposal.quorum
+                && proposal.for_votes > proposal.against_votes;
+            proposal.status = if passed {
+                ProposalStatus::Executed
+            } else {
+                ProposalStatus::Rejected
+            };
+            self.proposals.insert((token_id, proposal_id), &proposal);
+            self.env().emit_event(ProposalExecuted {
+                token_id,
+                proposal_id,
+                passed,
+            });
+            Ok(passed)
+        }
+
+        #[ink(message)]
+        pub fn place_ask(
+            &mut self,
+            token_id: TokenId,
+            price_per_share: u128,
+            amount: u128,
+        ) -> Result<(), Error> {
+            if price_per_share == 0 || amount == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let seller = self.env().caller();
+            let bal = self.balances.get((seller, token_id)).unwrap_or(0);
+            if bal < amount {
+                return Err(Error::InsufficientBalance);
+            }
+            let esc = self.escrowed_shares.get((token_id, seller)).unwrap_or(0);
+            self.escrowed_shares
+                .insert((token_id, seller), &(esc.saturating_add(amount)));
+            self.balances
+                .insert((seller, token_id), &(bal.saturating_sub(amount)));
+            let ask = Ask {
+                token_id,
+                seller,
+                price_per_share,
+                amount,
+                created_at: self.env().block_timestamp(),
+            };
+            self.asks.insert((token_id, seller), &ask);
+            self.env().emit_event(AskPlaced {
+                token_id,
+                seller,
+                price_per_share,
+                amount,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn cancel_ask(&mut self, token_id: TokenId) -> Result<(), Error> {
+            let seller = self.env().caller();
+            let _ask = self
+                .asks
+                .get((token_id, seller))
+                .ok_or(Error::AskNotFound)?;
+            let esc = self.escrowed_shares.get((token_id, seller)).unwrap_or(0);
+            let bal = self.balances.get((seller, token_id)).unwrap_or(0);
+            self.balances
+                .insert((seller, token_id), &(bal.saturating_add(esc)));
+            self.escrowed_shares.insert((token_id, seller), &0u128);
+            self.asks.remove((token_id, seller));
+            self.env().emit_event(AskCancelled { token_id, seller });
+            Ok(())
+        }
+
+        #[ink(message, payable)]
+        pub fn buy_shares(
+            &mut self,
+            token_id: TokenId,
+            seller: AccountId,
+            amount: u128,
+        ) -> Result<(), Error> {
+            if amount == 0 {
+                return Err(Error::InvalidAmount);
+            }
+            let ask = self
+                .asks
+                .get((token_id, seller))
+                .ok_or(Error::AskNotFound)?;
+            if ask.amount < amount {
+                return Err(Error::InvalidAmount);
+            }
+            let cost = ask.price_per_share.saturating_mul(amount);
+            let paid = self.env().transferred_value();
+            if paid != cost {
+                return Err(Error::InvalidAmount);
+            }
+            let buyer = self.env().caller();
+            if !self.pass_compliance(buyer)? || !self.pass_compliance(seller)? {
+                return Err(Error::ComplianceFailed);
+            }
+            let esc = self.escrowed_shares.get((token_id, seller)).unwrap_or(0);
+            if esc < amount {
+                return Err(Error::AskNotFound);
+            }
+            let to_balance = self.balances.get((buyer, token_id)).unwrap_or(0);
+            self.balances
+                .insert((buyer, token_id), &(to_balance.saturating_add(amount)));
+            self.escrowed_shares
+                .insert((token_id, seller), &(esc.saturating_sub(amount)));
+            match self.env().transfer(seller, cost) {
+                Ok(_) => {
+                    let mut rec = self
+                        .tax_records
+                        .get((seller, token_id))
+                        .unwrap_or(TaxRecord {
+                            dividends_received: 0,
+                            shares_sold: 0,
+                            proceeds: 0,
+                        });
+                    rec.shares_sold = rec.shares_sold.saturating_add(amount);
+                    rec.proceeds = rec.proceeds.saturating_add(cost);
+                    self.tax_records.insert((seller, token_id), &rec);
+                }
+                Err(_) => return Err(Error::InvalidRequest),
+            }
+            self.last_trade_price.insert(token_id, &ask.price_per_share);
+            if ask.amount == amount {
+                self.asks.remove((token_id, seller));
+            } else {
+                let mut new_ask = ask.clone();
+                new_ask.amount = ask.amount.saturating_sub(amount);
+                self.asks.insert((token_id, seller), &new_ask);
+            }
+            self.env().emit_event(SharesPurchased {
+                token_id,
+                seller,
+                buyer,
+                amount,
+                price_per_share: ask.price_per_share,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn get_last_trade_price(&self, token_id: TokenId) -> Option<u128> {
+            self.last_trade_price.get(token_id)
+        }
+
+        #[ink(message)]
+        pub fn get_portfolio(
+            &self,
+            owner: AccountId,
+            token_ids: Vec<TokenId>,
+        ) -> Vec<(TokenId, u128, u128)> {
+            let mut out = Vec::new();
+            for t in token_ids.iter() {
+                let bal = self.balances.get((owner, *t)).unwrap_or(0);
+                let price = self.last_trade_price.get(*t).unwrap_or(0);
+                out.push((*t, bal, price));
+            }
+            out
+        }
+
+        #[ink(message)]
+        pub fn get_tax_record(&self, owner: AccountId, token_id: TokenId) -> TaxRecord {
+            self.tax_records
+                .get((owner, token_id))
+                .unwrap_or(TaxRecord {
+                    dividends_received: 0,
+                    shares_sold: 0,
+                    proceeds: 0,
+                })
+        }
+
+        fn pass_compliance(&self, account: AccountId) -> Result<bool, Error> {
+            if let Some(registry) = self.compliance_registry {
+                use ink::env::call::FromAccountId;
+                let checker: ink::contract_ref!(propchain_traits::ComplianceChecker) =
+                    FromAccountId::from_account_id(registry);
+                Ok(checker.is_compliant(account))
+            } else {
+                Ok(true)
+            }
+        }
+
+        fn update_dividend_credit_on_change(
+            &mut self,
+            account: AccountId,
+            token_id: TokenId,
+        ) -> Result<(), Error> {
+            let scaling: u128 = 1_000_000_000_000;
+            let dps = self.dividends_per_share.get(token_id).unwrap_or(0);
+            let credited = self.dividend_credit.get((account, token_id)).unwrap_or(0);
+            if dps > credited {
+                let bal = self.balances.get((account, token_id)).unwrap_or(0);
+                let mut owed = self.dividend_balance.get((account, token_id)).unwrap_or(0);
+                let delta = dps.saturating_sub(credited);
+                let add = bal.saturating_mul(delta) / scaling;
+                owed = owed.saturating_add(add);
+                self.dividend_balance.insert((account, token_id), &owed);
+                self.dividend_credit.insert((account, token_id), &dps);
+            } else if credited == 0 && dps > 0 {
+                self.dividend_credit.insert((account, token_id), &dps);
+            }
+            Ok(())
         }
 
         /// Property-specific: Registers a property and mints a token

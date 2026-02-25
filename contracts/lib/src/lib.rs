@@ -90,6 +90,10 @@ mod propchain_contracts {
         pause_guardians: Mapping<AccountId, bool>,
         /// Oracle contract address (optional)
         oracle: Option<AccountId>,
+        /// Fee manager contract for dynamic fees and market mechanism (optional)
+        fee_manager: Option<AccountId>,
+        /// Fractional properties info
+        fractional: Mapping<u64, FractionalInfo>,
     }
 
     /// Escrow information
@@ -141,6 +145,22 @@ mod propchain_contracts {
         pub size: u64,
         pub valuation: u128,
         pub registered_at: u64,
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct FractionalInfo {
+        pub total_shares: u128,
+        pub enabled: bool,
+        pub created_at: u64,
     }
 
     /// Global analytics data
@@ -772,6 +792,8 @@ mod propchain_contracts {
                 },
                 pause_guardians: Mapping::default(),
                 oracle: None,
+                fee_manager: None,
+                fractional: Mapping::default(),
             };
 
             // Emit contract initialization event
@@ -812,6 +834,36 @@ mod propchain_contracts {
         #[ink(message)]
         pub fn oracle(&self) -> Option<AccountId> {
             self.oracle
+        }
+
+        /// Set the fee manager contract address (admin only)
+        #[ink(message)]
+        pub fn set_fee_manager(&mut self, fee_manager: Option<AccountId>) -> Result<(), Error> {
+            let caller = self.env().caller();
+            if caller != self.admin {
+                return Err(Error::Unauthorized);
+            }
+            self.fee_manager = fee_manager;
+            Ok(())
+        }
+
+        /// Returns the fee manager contract address
+        #[ink(message)]
+        pub fn get_fee_manager(&self) -> Option<AccountId> {
+            self.fee_manager
+        }
+
+        /// Get dynamic fee for an operation (calls fee manager if set; otherwise returns 0)
+        #[ink(message)]
+        pub fn get_dynamic_fee(&self, operation: FeeOperation) -> u128 {
+            let fee_manager_addr = match self.fee_manager {
+                Some(addr) => addr,
+                None => return 0,
+            };
+            use ink::env::call::FromAccountId;
+            let fee_manager: ink::contract_ref!(DynamicFeeProvider) =
+                FromAccountId::from_account_id(fee_manager_addr);
+            fee_manager.get_recommended_fee(operation)
         }
 
         /// Update property valuation using the oracle
@@ -886,33 +938,37 @@ mod propchain_contracts {
             self.compliance_registry
         }
 
-        /// Helper: Check compliance for an account
-        /// Returns Ok if compliant or no registry set, Err otherwise
-        fn check_compliance(&self, _account: AccountId) -> Result<(), Error> {
-            // If no compliance registry is set, skip check
-            if self.compliance_registry.is_none() {
-                return Ok(());
+        /// Helper: Check compliance for an account via the compliance registry (Issue #45).
+        /// Returns Ok if compliant or no registry set, Err(NotCompliant) or Err(ComplianceCheckFailed) otherwise.
+        fn check_compliance(&self, account: AccountId) -> Result<(), Error> {
+            let registry_addr = match self.compliance_registry {
+                Some(addr) => addr,
+                None => return Ok(()),
+            };
+
+            use ink::env::call::FromAccountId;
+            let registry: ink::contract_ref!(ComplianceChecker) =
+                FromAccountId::from_account_id(registry_addr);
+
+            let is_compliant = registry.is_compliant(account);
+
+            if !is_compliant {
+                return Err(Error::NotCompliant);
             }
-
-            // In a real implementation, this would make a cross-contract call
-            // to the compliance registry to check if the account is compliant.
-            // For now, we'll implement a basic check.
-            //
-            // Example cross-contract call (commented out):
-            // let registry = self.compliance_registry.unwrap();
-            // let is_compliant: bool = ink::env::call::build_call::<Environment>()
-            //     .call(registry)
-            //     .exec_input(...)
-            //     .returns::<bool>()
-            //     .invoke();
-            //
-            // if !is_compliant {
-            //     return Err(Error::NotCompliant);
-            // }
-
-            // For demonstration, we'll just return Ok
-            // In production, implement actual cross-contract call
             Ok(())
+        }
+
+        /// Check if an account is compliant (delegates to registry when set). For use by frontends.
+        #[ink(message)]
+        pub fn check_account_compliance(&self, account: AccountId) -> Result<bool, Error> {
+            if self.compliance_registry.is_none() {
+                return Ok(true);
+            }
+            let registry_addr = self.compliance_registry.unwrap();
+            use ink::env::call::FromAccountId;
+            let registry: ink::contract_ref!(ComplianceChecker) =
+                FromAccountId::from_account_id(registry_addr);
+            Ok(registry.is_compliant(account))
         }
 
         /// Helper to check if contract is paused
@@ -2477,6 +2533,47 @@ mod propchain_contracts {
 
         fn refund_escrow(&mut self, escrow_id: u64) -> Result<(), Self::Error> {
             self.refund_escrow(escrow_id)
+        }
+    }
+
+    impl PropertyRegistry {
+        #[ink(message)]
+        pub fn enable_fractional(
+            &mut self,
+            property_id: u64,
+            total_shares: u128,
+        ) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let property = self
+                .properties
+                .get(property_id)
+                .ok_or(Error::PropertyNotFound)?;
+            if caller != self.admin && caller != property.owner {
+                return Err(Error::Unauthorized);
+            }
+            if total_shares == 0 {
+                return Err(Error::InvalidMetadata);
+            }
+            let info = FractionalInfo {
+                total_shares,
+                enabled: true,
+                created_at: self.env().block_timestamp(),
+            };
+            self.fractional.insert(property_id, &info);
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn get_fractional_info(&self, property_id: u64) -> Option<FractionalInfo> {
+            self.fractional.get(property_id)
+        }
+
+        #[ink(message)]
+        pub fn is_fractional(&self, property_id: u64) -> bool {
+            self.fractional
+                .get(property_id)
+                .map(|i: FractionalInfo| i.enabled)
+                .unwrap_or(false)
         }
     }
 }

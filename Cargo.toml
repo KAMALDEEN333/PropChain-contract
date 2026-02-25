@@ -11,6 +11,9 @@ members = [
     "contracts/property-token",
     "contracts/insurance",
     "contracts/analytics",
+    "contracts/fees",
+    "contracts/compliance_registry",
+    "contracts/fractional",
 ]
 resolver = "2"
 

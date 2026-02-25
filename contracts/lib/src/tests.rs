@@ -1805,4 +1805,59 @@ mod tests {
             .is_ok());
         assert!(contract.has_badge(property_id, BadgeType::DocumentVerification));
     }
+
+    // ============================================================================
+    // DYNAMIC FEE INTEGRATION (Issue #38)
+    // ============================================================================
+
+    #[ink::test]
+    fn test_fee_manager_initially_none() {
+        let contract = PropertyRegistry::new();
+        assert_eq!(contract.get_fee_manager(), None);
+    }
+
+    #[ink::test]
+    fn test_get_dynamic_fee_without_manager_returns_zero() {
+        let contract = PropertyRegistry::new();
+        assert_eq!(contract.get_dynamic_fee(FeeOperation::RegisterProperty), 0);
+        assert_eq!(contract.get_dynamic_fee(FeeOperation::TransferProperty), 0);
+    }
+
+    #[ink::test]
+    fn test_set_fee_manager_admin_only() {
+        let accounts = default_accounts();
+        set_caller(accounts.alice);
+        let mut contract = PropertyRegistry::new();
+        let fee_manager_addr = AccountId::from([0x42; 32]);
+        assert!(contract.set_fee_manager(Some(fee_manager_addr)).is_ok());
+        assert_eq!(contract.get_fee_manager(), Some(fee_manager_addr));
+
+        set_caller(accounts.bob);
+        assert!(contract.set_fee_manager(None).is_err());
+        assert_eq!(contract.get_fee_manager(), Some(fee_manager_addr));
+    }
+
+    #[ink::test]
+    fn test_set_fee_manager_clear() {
+        let accounts = default_accounts();
+        set_caller(accounts.alice);
+        let mut contract = PropertyRegistry::new();
+        contract
+            .set_fee_manager(Some(AccountId::from([0x42; 32])))
+            .unwrap();
+        assert!(contract.set_fee_manager(None).is_ok());
+        assert_eq!(contract.get_fee_manager(), None);
+    }
+
+    // ============================================================================
+    // COMPLIANCE INTEGRATION (Issue #45)
+    // ============================================================================
+
+    #[ink::test]
+    fn test_check_account_compliance_without_registry_returns_true() {
+        let contract = PropertyRegistry::new();
+        let accounts = default_accounts();
+        assert_eq!(contract.check_account_compliance(accounts.alice), Ok(true));
+        assert_eq!(contract.check_account_compliance(accounts.bob), Ok(true));
+    }
 }
