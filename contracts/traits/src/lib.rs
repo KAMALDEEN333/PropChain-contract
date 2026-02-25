@@ -125,10 +125,10 @@ pub struct PropertyValuation {
     derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
 )]
 pub enum ValuationMethod {
-    Automated,  // AVM (Automated Valuation Model)
-    Manual,     // Manual appraisal
-    MarketData, // Based on market comparables
-    Hybrid,     // Combination of methods
+    Automated,   // AVM (Automated Valuation Model)
+    Manual,      // Manual appraisal
+    MarketData,  // Based on market comparables
+    Hybrid,      // Combination of methods
     AIValuation, // AI-powered machine learning valuation
 }
 

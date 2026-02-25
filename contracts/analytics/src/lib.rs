@@ -10,7 +10,9 @@ mod propchain_analytics {
     use super::*;
 
     /// Market metrics representing aggregated property data.
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct MarketMetrics {
         pub average_price: u128,
@@ -19,7 +21,9 @@ mod propchain_analytics {
     }
 
     /// Portfolio performance for an individual owner.
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct PortfolioPerformance {
         pub total_value: u128,
@@ -28,7 +32,9 @@ mod propchain_analytics {
     }
 
     /// Trend analysis with historical data.
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct MarketTrend {
         pub period_start: u64,
@@ -38,7 +44,9 @@ mod propchain_analytics {
     }
 
     /// User behavior analytics for a specific account.
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct UserBehavior {
         pub account: AccountId,
@@ -48,7 +56,9 @@ mod propchain_analytics {
     }
 
     /// Market Report.
-    #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout)]
+    #[derive(
+        Debug, Clone, PartialEq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct MarketReport {
         pub generated_at: u64,
@@ -92,7 +102,12 @@ mod propchain_analytics {
         }
 
         #[ink(message)]
-        pub fn update_market_metrics(&mut self, average_price: u128, total_volume: u128, properties_listed: u64) {
+        pub fn update_market_metrics(
+            &mut self,
+            average_price: u128,
+            total_volume: u128,
+            properties_listed: u64,
+        ) {
             self.ensure_admin();
             self.current_metrics = MarketMetrics {
                 average_price,
@@ -124,12 +139,14 @@ mod propchain_analytics {
         #[ink(message)]
         pub fn generate_market_report(&self) -> MarketReport {
             let latest_trend = if self.trend_count > 0 {
-                self.historical_trends.get(self.trend_count - 1).unwrap_or(MarketTrend {
-                    period_start: 0,
-                    period_end: 0,
-                    price_change_percentage: 0,
-                    volume_change_percentage: 0,
-                })
+                self.historical_trends
+                    .get(self.trend_count - 1)
+                    .unwrap_or(MarketTrend {
+                        period_start: 0,
+                        period_end: 0,
+                        price_change_percentage: 0,
+                        volume_change_percentage: 0,
+                    })
             } else {
                 MarketTrend {
                     period_start: 0,
@@ -143,7 +160,9 @@ mod propchain_analytics {
                 generated_at: self.env().block_timestamp(),
                 metrics: self.current_metrics.clone(),
                 trend: latest_trend,
-                insights: String::from("Market is relatively stable. Gas optimization is recommended."),
+                insights: String::from(
+                    "Market is relatively stable. Gas optimization is recommended.",
+                ),
             }
         }
 
@@ -155,7 +174,11 @@ mod propchain_analytics {
 
         /// Ensure only the admin can modify metrics
         fn ensure_admin(&self) {
-            assert_eq!(self.env().caller(), self.admin, "Unauthorized: Analytics admin only");
+            assert_eq!(
+                self.env().caller(),
+                self.admin,
+                "Unauthorized: Analytics admin only"
+            );
         }
     }
 

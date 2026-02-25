@@ -56,9 +56,11 @@ mod property_token {
         // Property-specific mappings
         token_properties: Mapping<TokenId, PropertyInfo>,
         property_tokens: Mapping<u64, TokenId>, // property_id to token_id mapping
-        ownership_history: Mapping<TokenId, Vec<OwnershipTransfer>>,
+        ownership_history_count: Mapping<TokenId, u32>,
+        ownership_history_items: Mapping<(TokenId, u32), OwnershipTransfer>,
         compliance_flags: Mapping<TokenId, ComplianceInfo>,
-        legal_documents: Mapping<TokenId, Vec<DocumentInfo>>,
+        legal_documents_count: Mapping<TokenId, u32>,
+        legal_documents_items: Mapping<(TokenId, u32), DocumentInfo>,
 
         // Cross-chain bridge mappings
         bridged_tokens: Mapping<(ChainId, TokenId), BridgedTokenInfo>,
@@ -318,9 +320,11 @@ mod property_token {
                 // Property-specific mappings
                 token_properties: Mapping::default(),
                 property_tokens: Mapping::default(),
-                ownership_history: Mapping::default(),
+                ownership_history_count: Mapping::default(),
+                ownership_history_items: Mapping::default(),
                 compliance_flags: Mapping::default(),
-                legal_documents: Mapping::default(),
+                legal_documents_count: Mapping::default(),
+                legal_documents_items: Mapping::default(),
 
                 // Cross-chain bridge mappings
                 bridged_tokens: Mapping::default(),
@@ -625,8 +629,9 @@ mod property_token {
                 },
             };
 
-            self.ownership_history
-                .insert(token_id, &vec![initial_transfer]);
+            self.ownership_history_count.insert(token_id, &1u32);
+            self.ownership_history_items
+                .insert((token_id, 0), &initial_transfer);
 
             // Initialize compliance as unverified
             let compliance_info = ComplianceInfo {
@@ -637,9 +642,8 @@ mod property_token {
             };
             self.compliance_flags.insert(token_id, &compliance_info);
 
-            // Initialize legal documents vector
-            self.legal_documents
-                .insert(token_id, &Vec::<DocumentInfo>::new());
+            // Initialize legal documents count
+            self.legal_documents_count.insert(token_id, &0u32);
 
             self.total_supply += 1;
 
@@ -650,6 +654,69 @@ mod property_token {
             });
 
             Ok(token_id)
+        }
+
+        /// Property-specific: Batch registers properties in a single gas-efficient transaction
+        #[ink(message)]
+        pub fn batch_register_properties(
+            &mut self,
+            metadata_list: Vec<PropertyMetadata>,
+        ) -> Result<Vec<TokenId>, Error> {
+            let caller = self.env().caller();
+            let mut issued_tokens = Vec::new();
+            let current_time = self.env().block_timestamp();
+
+            for metadata in metadata_list {
+                self.token_counter += 1;
+                let token_id = self.token_counter;
+
+                let property_info = PropertyInfo {
+                    id: token_id,
+                    owner: caller,
+                    metadata: metadata.clone(),
+                    registered_at: current_time,
+                };
+
+                self.token_owner.insert(token_id, &caller);
+                let balance = self.owner_token_count.get(caller).unwrap_or(0);
+                self.owner_token_count.insert(caller, &(balance + 1));
+
+                self.balances.insert((&caller, &token_id), &1u128);
+                self.token_properties.insert(token_id, &property_info);
+                self.property_tokens.insert(token_id, &token_id);
+
+                let initial_transfer = OwnershipTransfer {
+                    from: AccountId::from([0u8; 32]),
+                    to: caller,
+                    timestamp: current_time,
+                    transaction_hash: Hash::default(),
+                };
+
+                self.ownership_history_count.insert(token_id, &1u32);
+                self.ownership_history_items
+                    .insert((token_id, 0), &initial_transfer);
+
+                let compliance_info = ComplianceInfo {
+                    verified: false,
+                    verification_date: 0,
+                    verifier: AccountId::from([0u8; 32]),
+                    compliance_type: String::from("KYC"),
+                };
+                self.compliance_flags.insert(token_id, &compliance_info);
+                self.legal_documents_count.insert(token_id, &0u32);
+
+                self.env().emit_event(PropertyTokenMinted {
+                    token_id,
+                    property_id: token_id,
+                    owner: caller,
+                });
+
+                issued_tokens.push(token_id);
+            }
+
+            self.total_supply += issued_tokens.len() as u64;
+
+            Ok(issued_tokens)
         }
 
         /// Property-specific: Attaches a legal document to a token
@@ -667,8 +734,8 @@ mod property_token {
                 return Err(Error::Unauthorized);
             }
 
-            // Get existing documents
-            let mut documents = self.legal_documents.get(token_id).unwrap_or_default();
+            // Get existing documents count
+            let document_count = self.legal_documents_count.get(token_id).unwrap_or(0);
 
             // Add new document
             let document_info = DocumentInfo {
@@ -678,10 +745,11 @@ mod property_token {
                 uploader: caller,
             };
 
-            documents.push(document_info);
-
             // Save updated documents
-            self.legal_documents.insert(token_id, &documents);
+            self.legal_documents_items
+                .insert((token_id, document_count), &document_info);
+            self.legal_documents_count
+                .insert(token_id, &(document_count + 1));
 
             self.env().emit_event(LegalDocumentAttached {
                 token_id,
@@ -728,7 +796,17 @@ mod property_token {
         /// Property-specific: Gets ownership history for a token
         #[ink(message)]
         pub fn get_ownership_history(&self, token_id: TokenId) -> Option<Vec<OwnershipTransfer>> {
-            self.ownership_history.get(token_id)
+            let count = self.ownership_history_count.get(token_id).unwrap_or(0);
+            if count == 0 {
+                return None;
+            }
+            let mut result = Vec::new();
+            for i in 0..count {
+                if let Some(item) = self.ownership_history_items.get((token_id, i)) {
+                    result.push(item);
+                }
+            }
+            Some(result)
         }
 
         /// Cross-chain: Initiates token bridging to another chain with multi-signature
@@ -1029,8 +1107,9 @@ mod property_token {
                 },
             };
 
-            self.ownership_history
-                .insert(new_token_id, &vec![initial_transfer]);
+            self.ownership_history_count.insert(new_token_id, &1u32);
+            self.ownership_history_items
+                .insert((new_token_id, 0), &initial_transfer);
 
             // Initialize compliance as verified for bridged tokens
             let compliance_info = ComplianceInfo {
@@ -1041,9 +1120,8 @@ mod property_token {
             };
             self.compliance_flags.insert(new_token_id, &compliance_info);
 
-            // Initialize legal documents vector
-            self.legal_documents
-                .insert(new_token_id, &Vec::<DocumentInfo>::new());
+            // Initialize legal documents count
+            self.legal_documents_count.insert(new_token_id, &0u32);
 
             self.total_supply += 1;
 
@@ -1395,7 +1473,7 @@ mod property_token {
             from: AccountId,
             to: AccountId,
         ) -> Result<(), Error> {
-            let mut history = self.ownership_history.get(token_id).unwrap_or_default();
+            let count = self.ownership_history_count.get(token_id).unwrap_or(0);
 
             let transfer_record = OwnershipTransfer {
                 from,
@@ -1412,9 +1490,9 @@ mod property_token {
                 },
             };
 
-            history.push(transfer_record);
-
-            self.ownership_history.insert(token_id, &history);
+            self.ownership_history_items
+                .insert((token_id, count), &transfer_record);
+            self.ownership_history_count.insert(token_id, &(count + 1));
 
             Ok(())
         }
