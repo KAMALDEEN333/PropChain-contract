@@ -1044,7 +1044,7 @@ mod property_token {
         #[ink(message)]
         pub fn cancel_ask(&mut self, token_id: TokenId) -> Result<(), Error> {
             let seller = self.env().caller();
-            let ask = self.asks.get((token_id, seller)).ok_or(Error::AskNotFound)?;
+            let _ask = self.asks.get((token_id, seller)).ok_or(Error::AskNotFound)?;
             let esc = self.escrowed_shares.get((token_id, seller)).unwrap_or(0);
             let bal = self.balances.get((seller, token_id)).unwrap_or(0);
             self.balances
@@ -1104,7 +1104,7 @@ mod property_token {
             if ask.amount == amount {
                 self.asks.remove((token_id, seller));
             } else {
-                let mut new_ask = ask;
+                let mut new_ask = ask.clone();
                 new_ask.amount = ask.amount.saturating_sub(amount);
                 self.asks.insert((token_id, seller), &new_ask);
             }
@@ -1151,7 +1151,9 @@ mod property_token {
 
         fn pass_compliance(&self, account: AccountId) -> Result<bool, Error> {
             if let Some(registry) = self.compliance_registry {
-                let checker = propchain_traits::ComplianceCheckerRef::from_account_id(registry);
+                use ink::env::call::FromAccountId;
+                let checker: ink::contract_ref!(propchain_traits::ComplianceChecker) =
+                    FromAccountId::from_account_id(registry);
                 Ok(checker.is_compliant(account))
             } else {
                 Ok(true)
