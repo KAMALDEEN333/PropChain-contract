@@ -1819,14 +1819,8 @@ mod tests {
     #[ink::test]
     fn test_get_dynamic_fee_without_manager_returns_zero() {
         let contract = PropertyRegistry::new();
-        assert_eq!(
-            contract.get_dynamic_fee(FeeOperation::RegisterProperty),
-            0
-        );
-        assert_eq!(
-            contract.get_dynamic_fee(FeeOperation::TransferProperty),
-            0
-        );
+        assert_eq!(contract.get_dynamic_fee(FeeOperation::RegisterProperty), 0);
+        assert_eq!(contract.get_dynamic_fee(FeeOperation::TransferProperty), 0);
     }
 
     #[ink::test]
@@ -1848,7 +1842,9 @@ mod tests {
         let accounts = default_accounts();
         set_caller(accounts.alice);
         let mut contract = PropertyRegistry::new();
-        contract.set_fee_manager(Some(AccountId::from([0x42; 32]))).unwrap();
+        contract
+            .set_fee_manager(Some(AccountId::from([0x42; 32])))
+            .unwrap();
         assert!(contract.set_fee_manager(None).is_ok());
         assert_eq!(contract.get_fee_manager(), None);
     }

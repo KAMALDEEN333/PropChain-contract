@@ -183,21 +183,26 @@ fn main() -> Result<()> {
             for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
                 if entry.path().extension().is_some_and(|ext| ext == "rs") {
                     let content = fs::read_to_string(entry.path()).unwrap_or_default();
-                    
+
                     // Simple heuristics for Gas Optimization
-                    audit_report.gas_analysis.inefficient_loops += content.matches("for ").count() / 3; // Basic heuristic
-                    audit_report.gas_analysis.storage_access_violations += content.matches("Mapping::").count() / 2;
-                    audit_report.gas_analysis.large_allocations += content.matches("Vec::with_capacity").count();
+                    audit_report.gas_analysis.inefficient_loops +=
+                        content.matches("for ").count() / 3; // Basic heuristic
+                    audit_report.gas_analysis.storage_access_violations +=
+                        content.matches("Mapping::").count() / 2;
+                    audit_report.gas_analysis.large_allocations +=
+                        content.matches("Vec::with_capacity").count();
                 }
             }
 
-            // 5. Formal Verification & Fuzzing Info 
-            println!("{}", "Checking Formal Verification & Fuzzing (heuristic)...".yellow());
+            // 5. Formal Verification & Fuzzing Info
+            println!(
+                "{}",
+                "Checking Formal Verification & Fuzzing (heuristic)...".yellow()
+            );
             // This is indicative metrics gathering for the report
             audit_report.formal_verification.cargo_contract_errors = 0; // Usually caught by actual PR checks
-            audit_report.formal_verification.slither_high_issues = 0; 
-            audit_report.fuzzing.proptest_failures = 0; 
-
+            audit_report.formal_verification.slither_high_issues = 0;
+            audit_report.fuzzing.proptest_failures = 0;
 
             // Calculate Score
             // Calculate Score
@@ -209,7 +214,7 @@ fn main() -> Result<()> {
             score = score.saturating_sub((audit_report.static_analysis.unsafe_blocks * 5) as u32);
             score =
                 score.saturating_sub((audit_report.dependency_scan.vulnerabilities * 20) as u32);
-            score = score.saturating_sub((audit_report.gas_analysis.inefficient_loops * 1) as u32);
+            score = score.saturating_sub(audit_report.gas_analysis.inefficient_loops as u32);
 
             audit_report.score = score;
 

@@ -148,7 +148,13 @@ mod propchain_contracts {
     }
 
     #[derive(
-        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct FractionalInfo {
@@ -832,10 +838,7 @@ mod propchain_contracts {
 
         /// Set the fee manager contract address (admin only)
         #[ink(message)]
-        pub fn set_fee_manager(
-            &mut self,
-            fee_manager: Option<AccountId>,
-        ) -> Result<(), Error> {
+        pub fn set_fee_manager(&mut self, fee_manager: Option<AccountId>) -> Result<(), Error> {
             let caller = self.env().caller();
             if caller != self.admin {
                 return Err(Error::Unauthorized);
@@ -2541,7 +2544,10 @@ mod propchain_contracts {
             total_shares: u128,
         ) -> Result<(), Error> {
             let caller = self.env().caller();
-            let property = self.properties.get(property_id).ok_or(Error::PropertyNotFound)?;
+            let property = self
+                .properties
+                .get(property_id)
+                .ok_or(Error::PropertyNotFound)?;
             if caller != self.admin && caller != property.owner {
                 return Err(Error::Unauthorized);
             }

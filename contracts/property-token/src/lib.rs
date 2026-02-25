@@ -61,9 +61,11 @@ mod property_token {
         // Property-specific mappings
         token_properties: Mapping<TokenId, PropertyInfo>,
         property_tokens: Mapping<u64, TokenId>, // property_id to token_id mapping
-        ownership_history: Mapping<TokenId, Vec<OwnershipTransfer>>,
+        ownership_history_count: Mapping<TokenId, u32>,
+        ownership_history_items: Mapping<(TokenId, u32), OwnershipTransfer>,
         compliance_flags: Mapping<TokenId, ComplianceInfo>,
-        legal_documents: Mapping<TokenId, Vec<DocumentInfo>>,
+        legal_documents_count: Mapping<TokenId, u32>,
+        legal_documents_items: Mapping<(TokenId, u32), DocumentInfo>,
 
         // Cross-chain bridge mappings
         bridged_tokens: Mapping<(ChainId, TokenId), BridgedTokenInfo>,
@@ -184,7 +186,13 @@ mod property_token {
     }
 
     #[derive(
-        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct Proposal {
@@ -199,7 +207,13 @@ mod property_token {
     }
 
     #[derive(
-        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum ProposalStatus {
@@ -210,7 +224,13 @@ mod property_token {
     }
 
     #[derive(
-        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct Ask {
@@ -222,7 +242,13 @@ mod property_token {
     }
 
     #[derive(
-        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        scale::Encode,
+        scale::Decode,
+        ink::storage::traits::StorageLayout,
     )]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub struct TaxRecord {
@@ -479,9 +505,11 @@ mod property_token {
                 // Property-specific mappings
                 token_properties: Mapping::default(),
                 property_tokens: Mapping::default(),
-                ownership_history: Mapping::default(),
+                ownership_history_count: Mapping::default(),
+                ownership_history_items: Mapping::default(),
                 compliance_flags: Mapping::default(),
-                legal_documents: Mapping::default(),
+                legal_documents_count: Mapping::default(),
+                legal_documents_items: Mapping::default(),
 
                 // Cross-chain bridge mappings
                 bridged_tokens: Mapping::default(),
@@ -786,12 +814,17 @@ mod property_token {
                 return Err(Error::Unauthorized);
             }
             let bal = self.balances.get((to, token_id)).unwrap_or(0);
-            self.balances.insert((to, token_id), &(bal.saturating_add(amount)));
+            self.balances
+                .insert((to, token_id), &(bal.saturating_add(amount)));
             let ts = self.total_shares.get(token_id).unwrap_or(0);
             self.total_shares
                 .insert(token_id, &(ts.saturating_add(amount)));
             self.update_dividend_credit_on_change(to, token_id)?;
-            self.env().emit_event(SharesIssued { token_id, to, amount });
+            self.env().emit_event(SharesIssued {
+                token_id,
+                to,
+                amount,
+            });
             Ok(())
         }
 
@@ -893,11 +926,14 @@ mod property_token {
             self.dividend_balance.insert((caller, token_id), &0u128);
             match self.env().transfer(caller, owed) {
                 Ok(_) => {
-                    let mut rec = self.tax_records.get((caller, token_id)).unwrap_or(TaxRecord {
-                        dividends_received: 0,
-                        shares_sold: 0,
-                        proceeds: 0,
-                    });
+                    let mut rec = self
+                        .tax_records
+                        .get((caller, token_id))
+                        .unwrap_or(TaxRecord {
+                            dividends_received: 0,
+                            shares_sold: 0,
+                            proceeds: 0,
+                        });
                     rec.dividends_received = rec.dividends_received.saturating_add(owed);
                     self.tax_records.insert((caller, token_id), &rec);
                     self.env().emit_event(DividendsWithdrawn {
@@ -959,7 +995,11 @@ mod property_token {
                 return Err(Error::ProposalClosed);
             }
             let voter = self.env().caller();
-            if self.votes_cast.get((token_id, proposal_id, voter)).unwrap_or(false) {
+            if self
+                .votes_cast
+                .get((token_id, proposal_id, voter))
+                .unwrap_or(false)
+            {
                 return Err(Error::Unauthorized);
             }
             let weight = self.balances.get((voter, token_id)).unwrap_or(0);
@@ -969,7 +1009,8 @@ mod property_token {
                 proposal.against_votes = proposal.against_votes.saturating_add(weight);
             }
             self.proposals.insert((token_id, proposal_id), &proposal);
-            self.votes_cast.insert((token_id, proposal_id, voter), &true);
+            self.votes_cast
+                .insert((token_id, proposal_id, voter), &true);
             self.env().emit_event(Voted {
                 token_id,
                 proposal_id,
@@ -981,7 +1022,11 @@ mod property_token {
         }
 
         #[ink(message)]
-        pub fn execute_proposal(&mut self, token_id: TokenId, proposal_id: u64) -> Result<bool, Error> {
+        pub fn execute_proposal(
+            &mut self,
+            token_id: TokenId,
+            proposal_id: u64,
+        ) -> Result<bool, Error> {
             let mut proposal = self
                 .proposals
                 .get((token_id, proposal_id))
@@ -989,7 +1034,8 @@ mod property_token {
             if proposal.status != ProposalStatus::Open {
                 return Err(Error::ProposalClosed);
             }
-            let passed = proposal.for_votes >= proposal.quorum && proposal.for_votes > proposal.against_votes;
+            let passed = proposal.for_votes >= proposal.quorum
+                && proposal.for_votes > proposal.against_votes;
             proposal.status = if passed {
                 ProposalStatus::Executed
             } else {
@@ -1044,7 +1090,10 @@ mod property_token {
         #[ink(message)]
         pub fn cancel_ask(&mut self, token_id: TokenId) -> Result<(), Error> {
             let seller = self.env().caller();
-            let _ask = self.asks.get((token_id, seller)).ok_or(Error::AskNotFound)?;
+            let _ask = self
+                .asks
+                .get((token_id, seller))
+                .ok_or(Error::AskNotFound)?;
             let esc = self.escrowed_shares.get((token_id, seller)).unwrap_or(0);
             let bal = self.balances.get((seller, token_id)).unwrap_or(0);
             self.balances
@@ -1065,7 +1114,10 @@ mod property_token {
             if amount == 0 {
                 return Err(Error::InvalidAmount);
             }
-            let ask = self.asks.get((token_id, seller)).ok_or(Error::AskNotFound)?;
+            let ask = self
+                .asks
+                .get((token_id, seller))
+                .ok_or(Error::AskNotFound)?;
             if ask.amount < amount {
                 return Err(Error::InvalidAmount);
             }
@@ -1089,11 +1141,14 @@ mod property_token {
                 .insert((token_id, seller), &(esc.saturating_sub(amount)));
             match self.env().transfer(seller, cost) {
                 Ok(_) => {
-                    let mut rec = self.tax_records.get((seller, token_id)).unwrap_or(TaxRecord {
-                        dividends_received: 0,
-                        shares_sold: 0,
-                        proceeds: 0,
-                    });
+                    let mut rec = self
+                        .tax_records
+                        .get((seller, token_id))
+                        .unwrap_or(TaxRecord {
+                            dividends_received: 0,
+                            shares_sold: 0,
+                            proceeds: 0,
+                        });
                     rec.shares_sold = rec.shares_sold.saturating_add(amount);
                     rec.proceeds = rec.proceeds.saturating_add(cost);
                     self.tax_records.insert((seller, token_id), &rec);
@@ -1231,8 +1286,9 @@ mod property_token {
                 },
             };
 
-            self.ownership_history
-                .insert(token_id, &vec![initial_transfer]);
+            self.ownership_history_count.insert(token_id, &1u32);
+            self.ownership_history_items
+                .insert((token_id, 0), &initial_transfer);
 
             // Initialize compliance as unverified
             let compliance_info = ComplianceInfo {
@@ -1243,9 +1299,8 @@ mod property_token {
             };
             self.compliance_flags.insert(token_id, &compliance_info);
 
-            // Initialize legal documents vector
-            self.legal_documents
-                .insert(token_id, &Vec::<DocumentInfo>::new());
+            // Initialize legal documents count
+            self.legal_documents_count.insert(token_id, &0u32);
 
             self.total_supply += 1;
 
@@ -1256,6 +1311,69 @@ mod property_token {
             });
 
             Ok(token_id)
+        }
+
+        /// Property-specific: Batch registers properties in a single gas-efficient transaction
+        #[ink(message)]
+        pub fn batch_register_properties(
+            &mut self,
+            metadata_list: Vec<PropertyMetadata>,
+        ) -> Result<Vec<TokenId>, Error> {
+            let caller = self.env().caller();
+            let mut issued_tokens = Vec::new();
+            let current_time = self.env().block_timestamp();
+
+            for metadata in metadata_list {
+                self.token_counter += 1;
+                let token_id = self.token_counter;
+
+                let property_info = PropertyInfo {
+                    id: token_id,
+                    owner: caller,
+                    metadata: metadata.clone(),
+                    registered_at: current_time,
+                };
+
+                self.token_owner.insert(token_id, &caller);
+                let balance = self.owner_token_count.get(caller).unwrap_or(0);
+                self.owner_token_count.insert(caller, &(balance + 1));
+
+                self.balances.insert((&caller, &token_id), &1u128);
+                self.token_properties.insert(token_id, &property_info);
+                self.property_tokens.insert(token_id, &token_id);
+
+                let initial_transfer = OwnershipTransfer {
+                    from: AccountId::from([0u8; 32]),
+                    to: caller,
+                    timestamp: current_time,
+                    transaction_hash: Hash::default(),
+                };
+
+                self.ownership_history_count.insert(token_id, &1u32);
+                self.ownership_history_items
+                    .insert((token_id, 0), &initial_transfer);
+
+                let compliance_info = ComplianceInfo {
+                    verified: false,
+                    verification_date: 0,
+                    verifier: AccountId::from([0u8; 32]),
+                    compliance_type: String::from("KYC"),
+                };
+                self.compliance_flags.insert(token_id, &compliance_info);
+                self.legal_documents_count.insert(token_id, &0u32);
+
+                self.env().emit_event(PropertyTokenMinted {
+                    token_id,
+                    property_id: token_id,
+                    owner: caller,
+                });
+
+                issued_tokens.push(token_id);
+            }
+
+            self.total_supply += issued_tokens.len() as u64;
+
+            Ok(issued_tokens)
         }
 
         /// Property-specific: Attaches a legal document to a token
@@ -1273,8 +1391,8 @@ mod property_token {
                 return Err(Error::Unauthorized);
             }
 
-            // Get existing documents
-            let mut documents = self.legal_documents.get(token_id).unwrap_or_default();
+            // Get existing documents count
+            let document_count = self.legal_documents_count.get(token_id).unwrap_or(0);
 
             // Add new document
             let document_info = DocumentInfo {
@@ -1284,10 +1402,11 @@ mod property_token {
                 uploader: caller,
             };
 
-            documents.push(document_info);
-
             // Save updated documents
-            self.legal_documents.insert(token_id, &documents);
+            self.legal_documents_items
+                .insert((token_id, document_count), &document_info);
+            self.legal_documents_count
+                .insert(token_id, &(document_count + 1));
 
             self.env().emit_event(LegalDocumentAttached {
                 token_id,
@@ -1334,7 +1453,17 @@ mod property_token {
         /// Property-specific: Gets ownership history for a token
         #[ink(message)]
         pub fn get_ownership_history(&self, token_id: TokenId) -> Option<Vec<OwnershipTransfer>> {
-            self.ownership_history.get(token_id)
+            let count = self.ownership_history_count.get(token_id).unwrap_or(0);
+            if count == 0 {
+                return None;
+            }
+            let mut result = Vec::new();
+            for i in 0..count {
+                if let Some(item) = self.ownership_history_items.get((token_id, i)) {
+                    result.push(item);
+                }
+            }
+            Some(result)
         }
 
         /// Cross-chain: Initiates token bridging to another chain with multi-signature
@@ -1635,8 +1764,9 @@ mod property_token {
                 },
             };
 
-            self.ownership_history
-                .insert(new_token_id, &vec![initial_transfer]);
+            self.ownership_history_count.insert(new_token_id, &1u32);
+            self.ownership_history_items
+                .insert((new_token_id, 0), &initial_transfer);
 
             // Initialize compliance as verified for bridged tokens
             let compliance_info = ComplianceInfo {
@@ -1647,9 +1777,8 @@ mod property_token {
             };
             self.compliance_flags.insert(new_token_id, &compliance_info);
 
-            // Initialize legal documents vector
-            self.legal_documents
-                .insert(new_token_id, &Vec::<DocumentInfo>::new());
+            // Initialize legal documents count
+            self.legal_documents_count.insert(new_token_id, &0u32);
 
             self.total_supply += 1;
 
@@ -2001,7 +2130,7 @@ mod property_token {
             from: AccountId,
             to: AccountId,
         ) -> Result<(), Error> {
-            let mut history = self.ownership_history.get(token_id).unwrap_or_default();
+            let count = self.ownership_history_count.get(token_id).unwrap_or(0);
 
             let transfer_record = OwnershipTransfer {
                 from,
@@ -2018,9 +2147,9 @@ mod property_token {
                 },
             };
 
-            history.push(transfer_record);
-
-            self.ownership_history.insert(token_id, &history);
+            self.ownership_history_items
+                .insert((token_id, count), &transfer_record);
+            self.ownership_history_count.insert(token_id, &(count + 1));
 
             Ok(())
         }

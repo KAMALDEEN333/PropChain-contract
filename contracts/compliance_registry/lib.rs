@@ -190,7 +190,7 @@ mod compliance_registry {
     pub struct VerificationRequest {
         pub account: AccountId,
         pub jurisdiction: Jurisdiction,
-        pub document_hash: [u8; 32], // Hash of document for verification
+        pub document_hash: [u8; 32],  // Hash of document for verification
         pub biometric_hash: [u8; 32], // Hash of biometric data
         pub request_timestamp: Timestamp,
         pub request_id: u64,
@@ -388,7 +388,7 @@ mod compliance_registry {
             let mut verifiers = Mapping::default();
             verifiers.insert(caller, &true);
 
-            let mut registry =             Self {
+            let mut registry = Self {
                 owner: caller,
                 verifiers,
                 compliance_data: Mapping::default(),
@@ -504,15 +504,14 @@ mod compliance_registry {
             }
 
             // Check jurisdiction rules
-            let rules = self.jurisdiction_rules.get(jurisdiction)
+            let rules = self
+                .jurisdiction_rules
+                .get(jurisdiction)
                 .ok_or(Error::JurisdictionNotSupported)?;
 
             // Validate minimum verification level
-            let verification_level = self.calculate_verification_level(
-                document_type,
-                biometric_method,
-                risk_score,
-            );
+            let verification_level =
+                self.calculate_verification_level(document_type, biometric_method, risk_score);
             if verification_level < rules.minimum_verification_level {
                 return Err(Error::NotVerified);
             }
@@ -529,7 +528,7 @@ mod compliance_registry {
                 verification_timestamp: now,
                 expiry_timestamp: expiry,
                 kyc_hash,
-                aml_checked: false, // Will be set separately
+                aml_checked: false,       // Will be set separately
                 sanctions_checked: false, // Will be set separately
                 document_type,
                 biometric_method,
@@ -549,7 +548,7 @@ mod compliance_registry {
             };
 
             self.compliance_data.insert(account, &compliance);
-            
+
             // Log audit event
             self.log_audit_event(account, 0); // 0 = verification
 
@@ -583,7 +582,7 @@ mod compliance_registry {
 
             // Biometric method contributes to level
             match biometric_method {
-                BiometricMethod::None => {},
+                BiometricMethod::None => {}
                 BiometricMethod::Fingerprint => level += 1,
                 BiometricMethod::FaceRecognition => level += 1,
                 BiometricMethod::VoiceRecognition => level += 1,
@@ -671,7 +670,7 @@ mod compliance_registry {
                 }
 
                 self.compliance_data.insert(account, &data);
-                
+
                 // Log audit event
                 self.log_audit_event(account, 1); // 1 = AML check
 
@@ -699,7 +698,7 @@ mod compliance_registry {
                     data.risk_level = RiskLevel::Prohibited;
                 }
                 self.compliance_data.insert(account, &data);
-                
+
                 // Log audit event
                 self.log_audit_event(account, 2); // 2 = sanctions check
 
@@ -717,7 +716,7 @@ mod compliance_registry {
             if let Some(mut data) = self.compliance_data.get(account) {
                 data.status = VerificationStatus::Rejected;
                 self.compliance_data.insert(account, &data);
-                
+
                 self.env().emit_event(VerificationUpdated {
                     account,
                     status: VerificationStatus::Rejected,
@@ -856,7 +855,10 @@ mod compliance_registry {
 
         /// Get jurisdiction rules
         #[ink(message)]
-        pub fn get_jurisdiction_rules(&self, jurisdiction: Jurisdiction) -> Option<JurisdictionRules> {
+        pub fn get_jurisdiction_rules(
+            &self,
+            jurisdiction: Jurisdiction,
+        ) -> Option<JurisdictionRules> {
             self.jurisdiction_rules.get(jurisdiction)
         }
 
@@ -870,7 +872,7 @@ mod compliance_registry {
             biometric_hash: [u8; 32],
         ) -> Result<u64> {
             let caller = self.env().caller();
-            
+
             // Check if there's already a pending request
             if let Some(existing_request_id) = self.account_requests.get(caller) {
                 if let Some(request) = self.verification_requests.get(existing_request_id) {
@@ -926,7 +928,9 @@ mod compliance_registry {
         ) -> Result<()> {
             self.ensure_verifier()?;
 
-            let request = self.verification_requests.get(request_id)
+            let request = self
+                .verification_requests
+                .get(request_id)
                 .ok_or(Error::NotVerified)?;
 
             if request.status != VerificationStatus::Pending {
@@ -948,7 +952,8 @@ mod compliance_registry {
                 // Update request status
                 let mut updated_request = request;
                 updated_request.status = VerificationStatus::Verified;
-                self.verification_requests.insert(request_id, &updated_request);
+                self.verification_requests
+                    .insert(request_id, &updated_request);
             }
 
             result
@@ -971,7 +976,7 @@ mod compliance_registry {
             };
 
             self.service_providers.insert(provider, &provider_info);
-            
+
             // Also add as verifier if service type includes verification
             if service_type == 0 || service_type == 3 {
                 self.verifiers.insert(provider, &true);
@@ -1062,7 +1067,7 @@ mod compliance_registry {
                 let now = self.env().block_timestamp();
                 let threshold_ms = (days_threshold as u64) * 24 * 60 * 60 * 1000;
                 let expiry_threshold = data.expiry_timestamp.saturating_sub(threshold_ms);
-                
+
                 now >= expiry_threshold || data.status == VerificationStatus::Expired
             } else {
                 true
@@ -1072,10 +1077,7 @@ mod compliance_registry {
         /// Get accounts requiring re-verification (for automated monitoring)
         /// Note: Full implementation requires off-chain indexing
         #[ink(message)]
-        pub fn get_accounts_needing_reverification(
-            &self,
-            _limit: u32,
-        ) -> Vec<AccountId> {
+        pub fn get_accounts_needing_reverification(&self, _limit: u32) -> Vec<AccountId> {
             // This is a placeholder - full implementation would require
             // off-chain indexing or a different storage pattern
             // Off-chain services should maintain their own index of accounts
@@ -1094,8 +1096,13 @@ mod compliance_registry {
             if !self.is_compliant(account) {
                 return Err(Error::NotVerified);
             }
-            let data = self.compliance_data.get(account).ok_or(Error::NotVerified)?;
-            let rules = self.jurisdiction_rules.get(data.jurisdiction)
+            let data = self
+                .compliance_data
+                .get(account)
+                .ok_or(Error::NotVerified)?;
+            let rules = self
+                .jurisdiction_rules
+                .get(data.jurisdiction)
                 .ok_or(Error::JurisdictionNotSupported)?;
 
             // Apply jurisdiction rules for operation
@@ -1105,7 +1112,8 @@ mod compliance_registry {
                 | ComplianceOperation::UpdateMetadata
                 | ComplianceOperation::CreateEscrow
                 | ComplianceOperation::ReleaseEscrow => {
-                    if !rules.requires_kyc || !rules.requires_aml || !rules.requires_sanctions_check {
+                    if !rules.requires_kyc || !rules.requires_aml || !rules.requires_sanctions_check
+                    {
                         return Ok(());
                     }
                     if !data.aml_checked || !data.sanctions_checked {
@@ -1132,7 +1140,8 @@ mod compliance_registry {
             let data = self.compliance_data.get(account)?;
             let audit_count = self.audit_log_count.get(account).unwrap_or(0);
             let last_audit = if audit_count > 0 {
-                self.audit_logs.get((account, audit_count - 1))
+                self.audit_logs
+                    .get((account, audit_count - 1))
                     .map(|l| l.timestamp)
                     .unwrap_or(0)
             } else {
@@ -1240,7 +1249,7 @@ mod compliance_registry {
                 timestamp: self.env().block_timestamp(),
             });
         }
-        
+
         /// Set the ZK compliance contract address
         #[ink(message)]
         pub fn set_zk_compliance_contract(&mut self, zk_contract: AccountId) -> Result<()> {
@@ -1269,7 +1278,7 @@ mod compliance_registry {
                 // Since cross-contract calls in ink! are complex, we'll implement a simplified version
                 // that assumes the zk-compliance contract has a method to check compliance
                 // For now, we'll just verify that the account has valid ZK proofs for critical types
-                
+
                 // This is a simplified approach - in reality you'd make an actual cross-contract call
                 // to the ZK compliance contract to verify compliance
             }
@@ -1327,15 +1336,18 @@ mod compliance_registry {
                 large_transaction_volume: false,
                 source_of_funds_verified: true,
             };
-            contract.update_aml_status(user, true, aml_factors)
+            contract
+                .update_aml_status(user, true, aml_factors)
                 .expect("AML status update should succeed in test");
 
             // Update sanctions status
-            contract.update_sanctions_status(user, true, SanctionsList::OFAC)
+            contract
+                .update_sanctions_status(user, true, SanctionsList::OFAC)
                 .expect("Sanctions status update should succeed in test");
 
             // Update consent (required for compliance)
-            contract.update_consent(user, ConsentStatus::Given)
+            contract
+                .update_consent(user, ConsentStatus::Given)
                 .expect("Consent update should succeed in test");
 
             // Check compliance
@@ -1361,15 +1373,17 @@ mod compliance_registry {
             let kyc_hash = [0u8; 32];
 
             // Verify user first
-            contract.submit_verification(
-                user,
-                Jurisdiction::US,
-                kyc_hash,
-                RiskLevel::Low,
-                DocumentType::Passport,
-                BiometricMethod::None,
-                20,
-            ).expect("KYC verification should succeed in test");
+            contract
+                .submit_verification(
+                    user,
+                    Jurisdiction::US,
+                    kyc_hash,
+                    RiskLevel::Low,
+                    DocumentType::Passport,
+                    BiometricMethod::None,
+                    20,
+                )
+                .expect("KYC verification should succeed in test");
 
             // Update AML with passing status
             let aml_factors = AMLRiskFactors {
@@ -1379,11 +1393,14 @@ mod compliance_registry {
                 large_transaction_volume: false,
                 source_of_funds_verified: true,
             };
-            contract.update_aml_status(user, true, aml_factors)
+            contract
+                .update_aml_status(user, true, aml_factors)
                 .expect("AML status update should succeed in test");
-            contract.update_sanctions_status(user, true, SanctionsList::UN)
+            contract
+                .update_sanctions_status(user, true, SanctionsList::UN)
                 .expect("Sanctions status update should succeed in test");
-            contract.update_consent(user, ConsentStatus::Given)
+            contract
+                .update_consent(user, ConsentStatus::Given)
                 .expect("Consent update should succeed in test");
 
             // User is compliant
@@ -1397,7 +1414,8 @@ mod compliance_registry {
                 large_transaction_volume: true,
                 source_of_funds_verified: false,
             };
-            contract.update_aml_status(user, false, high_risk_factors)
+            contract
+                .update_aml_status(user, false, high_risk_factors)
                 .expect("AML status update should succeed in test");
 
             // User is no longer compliant
@@ -1410,16 +1428,17 @@ mod compliance_registry {
             let mut contract = ComplianceRegistry::new();
             let user = AccountId::from([0x05; 32]);
             let kyc_hash = [0u8; 32];
-            contract.submit_verification(
-                user,
-                Jurisdiction::US,
-                kyc_hash,
-                RiskLevel::Low,
-                DocumentType::Passport,
-                BiometricMethod::None,
-                10,
-            )
-            .expect("submit");
+            contract
+                .submit_verification(
+                    user,
+                    Jurisdiction::US,
+                    kyc_hash,
+                    RiskLevel::Low,
+                    DocumentType::Passport,
+                    BiometricMethod::None,
+                    10,
+                )
+                .expect("submit");
             let aml = AMLRiskFactors {
                 pep_status: false,
                 high_risk_country: false,
@@ -1428,11 +1447,19 @@ mod compliance_registry {
                 source_of_funds_verified: true,
             };
             contract.update_aml_status(user, true, aml).expect("aml");
-            contract.update_sanctions_status(user, true, SanctionsList::OFAC).expect("sanctions");
-            contract.update_consent(user, ConsentStatus::Given).expect("consent");
+            contract
+                .update_sanctions_status(user, true, SanctionsList::OFAC)
+                .expect("sanctions");
+            contract
+                .update_consent(user, ConsentStatus::Given)
+                .expect("consent");
 
-            assert!(contract.check_transaction_compliance(user, ComplianceOperation::RegisterProperty).is_ok());
-            assert!(contract.check_transaction_compliance(user, ComplianceOperation::TransferProperty).is_ok());
+            assert!(contract
+                .check_transaction_compliance(user, ComplianceOperation::RegisterProperty)
+                .is_ok());
+            assert!(contract
+                .check_transaction_compliance(user, ComplianceOperation::TransferProperty)
+                .is_ok());
         }
 
         #[ink::test]
@@ -1440,16 +1467,17 @@ mod compliance_registry {
             let mut contract = ComplianceRegistry::new();
             let user = AccountId::from([0x06; 32]);
             let kyc_hash = [0u8; 32];
-            contract.submit_verification(
-                user,
-                Jurisdiction::EU,
-                kyc_hash,
-                RiskLevel::Low,
-                DocumentType::NationalId,
-                BiometricMethod::None,
-                5,
-            )
-            .expect("submit");
+            contract
+                .submit_verification(
+                    user,
+                    Jurisdiction::EU,
+                    kyc_hash,
+                    RiskLevel::Low,
+                    DocumentType::NationalId,
+                    BiometricMethod::None,
+                    5,
+                )
+                .expect("submit");
             let report = contract.get_compliance_report(user).expect("report");
             assert_eq!(report.account, user);
             assert_eq!(report.jurisdiction, Jurisdiction::EU);
@@ -1462,18 +1490,16 @@ mod compliance_registry {
             let request_id = contract
                 .create_verification_request(Jurisdiction::UK, [1u8; 32], [2u8; 32])
                 .expect("create request");
-            let status = contract.get_verification_workflow_status(request_id).expect("status");
+            let status = contract
+                .get_verification_workflow_status(request_id)
+                .expect("status");
             assert!(matches!(status, WorkflowStatus::Pending));
         }
 
         #[ink::test]
         fn get_regulatory_report_works() {
             let contract = ComplianceRegistry::new();
-            let report = contract.get_regulatory_report(
-                Jurisdiction::US,
-                0,
-                1000,
-            );
+            let report = contract.get_regulatory_report(Jurisdiction::US, 0, 1000);
             assert_eq!(report.jurisdiction, Jurisdiction::US);
             assert_eq!(report.period_start, 0);
             assert_eq!(report.period_end, 1000);

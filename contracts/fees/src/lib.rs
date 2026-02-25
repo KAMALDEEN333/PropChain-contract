@@ -23,7 +23,10 @@ mod propchain_fees {
     const MAX_CONGESTION_MULTIPLIER: u32 = 300; // 300% of base
 
     #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct FeeConfig {
         /// Base fee per operation (in smallest unit)
         pub base_fee: u128,
@@ -41,7 +44,10 @@ mod propchain_fees {
 
     /// Single data point for congestion/demand history (reserved for future analytics)
     #[derive(Debug, Clone, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     #[allow(dead_code)]
     pub struct FeeHistoryEntry {
         pub timestamp: u64,
@@ -51,7 +57,10 @@ mod propchain_fees {
 
     /// Premium listing auction
     #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct PremiumAuction {
         pub property_id: u64,
         pub seller: AccountId,
@@ -65,7 +74,10 @@ mod propchain_fees {
 
     /// Bid in a premium auction
     #[derive(Debug, Clone, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct AuctionBid {
         pub bidder: AccountId,
         pub amount: u128,
@@ -74,7 +86,10 @@ mod propchain_fees {
 
     /// Reward record for validators/participants
     #[derive(Debug, Clone, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct RewardRecord {
         pub account: AccountId,
         pub amount: u128,
@@ -83,7 +98,10 @@ mod propchain_fees {
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub enum RewardReason {
         ValidatorReward,
         LiquidityProvider,
@@ -93,10 +111,13 @@ mod propchain_fees {
 
     /// Fee report for transparency and dashboard
     #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct FeeReport {
         pub config: FeeConfig,
-        pub congestion_index: u32,       // 0-100
+        pub congestion_index: u32, // 0-100
         pub recommended_fee: u128,
         pub total_fees_collected: u128,
         pub total_distributed: u128,
@@ -107,7 +128,10 @@ mod propchain_fees {
 
     /// Fee estimate for a user (optimization recommendation)
     #[derive(Debug, Clone, PartialEq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout))]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct FeeEstimate {
         pub operation: FeeOperation,
         pub estimated_fee: u128,
@@ -242,11 +266,7 @@ mod propchain_fees {
 
     impl FeeManager {
         #[ink(constructor)]
-        pub fn new(
-            base_fee: u128,
-            min_fee: u128,
-            max_fee: u128,
-        ) -> Self {
+        pub fn new(base_fee: u128, min_fee: u128, max_fee: u128) -> Self {
             let caller = Self::env().caller();
             let timestamp = Self::env().block_timestamp();
             let default_config = FeeConfig {
@@ -275,7 +295,7 @@ mod propchain_fees {
                 validators: Mapping::default(),
                 validator_list: Vec::new(),
                 validator_share_bp: 5000, // 50% to validators
-                treasury_share_bp: 5000, // 50% to treasury
+                treasury_share_bp: 5000,  // 50% to treasury
             }
         }
 
@@ -288,7 +308,9 @@ mod propchain_fees {
 
         /// Get config for operation (operation-specific or default)
         fn get_config(&self, op: FeeOperation) -> FeeConfig {
-            self.operation_config.get(op).unwrap_or(self.default_config.clone())
+            self.operation_config
+                .get(op)
+                .unwrap_or(self.default_config.clone())
         }
 
         /// Compute current congestion index (0-100) from recent activity
@@ -306,7 +328,10 @@ mod propchain_fees {
         /// Demand factor in basis points (from recent volume)
         fn demand_factor_bp(&self) -> u32 {
             let ci = self.congestion_index();
-            self.default_config.demand_factor_bp.saturating_mul(ci).saturating_div(100)
+            self.default_config
+                .demand_factor_bp
+                .saturating_mul(ci)
+                .saturating_div(100)
         }
 
         // ========== Dynamic fee calculation ==========
@@ -329,7 +354,10 @@ mod propchain_fees {
             from: AccountId,
         ) -> Result<(), FeeError> {
             let _ = from;
-            self.recent_ops_count = self.recent_ops_count.saturating_add(1).min(CONGESTION_WINDOW);
+            self.recent_ops_count = self
+                .recent_ops_count
+                .saturating_add(1)
+                .min(CONGESTION_WINDOW);
             let now = self.env().block_timestamp();
             if now.saturating_sub(self.last_congestion_reset) > 3600 {
                 self.last_congestion_reset = now;
@@ -440,7 +468,10 @@ mod propchain_fees {
         pub fn place_bid(&mut self, auction_id: u64, amount: u128) -> Result<(), FeeError> {
             let caller = self.env().caller();
             let now = self.env().block_timestamp();
-            let mut auction = self.auctions.get(auction_id).ok_or(FeeError::AuctionNotFound)?;
+            let mut auction = self
+                .auctions
+                .get(auction_id)
+                .ok_or(FeeError::AuctionNotFound)?;
             if auction.settled {
                 return Err(FeeError::AlreadySettled);
             }
@@ -478,7 +509,10 @@ mod propchain_fees {
         #[ink(message)]
         pub fn settle_auction(&mut self, auction_id: u64) -> Result<(), FeeError> {
             let now = self.env().block_timestamp();
-            let mut auction = self.auctions.get(auction_id).ok_or(FeeError::AuctionNotFound)?;
+            let mut auction = self
+                .auctions
+                .get(auction_id)
+                .ok_or(FeeError::AuctionNotFound)?;
             if auction.settled {
                 return Err(FeeError::AlreadySettled);
             }
@@ -563,7 +597,8 @@ mod propchain_fees {
                 let per_validator = validator_total.saturating_div(validator_count as u128);
                 for acc in validator_list {
                     let current = self.pending_rewards.get(acc).unwrap_or(0);
-                    self.pending_rewards.insert(acc, &current.saturating_add(per_validator));
+                    self.pending_rewards
+                        .insert(acc, &current.saturating_add(per_validator));
                     self.record_reward(acc, per_validator, RewardReason::ValidatorReward);
                     self.total_distributed = self.total_distributed.saturating_add(per_validator);
                     self.env().emit_event(RewardsDistributed {
