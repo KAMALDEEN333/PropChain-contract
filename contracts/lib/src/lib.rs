@@ -92,6 +92,8 @@ mod propchain_contracts {
         oracle: Option<AccountId>,
         /// Fee manager contract for dynamic fees and market mechanism (optional)
         fee_manager: Option<AccountId>,
+        /// Fractional properties info
+        fractional: Mapping<u64, FractionalInfo>,
     }
 
     /// Escrow information
@@ -143,6 +145,16 @@ mod propchain_contracts {
         pub size: u64,
         pub valuation: u128,
         pub registered_at: u64,
+    }
+
+    #[derive(
+        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, ink::storage::traits::StorageLayout,
+    )]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct FractionalInfo {
+        pub total_shares: u128,
+        pub enabled: bool,
+        pub created_at: u64,
     }
 
     /// Global analytics data
@@ -775,6 +787,7 @@ mod propchain_contracts {
                 pause_guardians: Mapping::default(),
                 oracle: None,
                 fee_manager: None,
+                fractional: Mapping::default(),
             };
 
             // Emit contract initialization event
@@ -2517,6 +2530,44 @@ mod propchain_contracts {
 
         fn refund_escrow(&mut self, escrow_id: u64) -> Result<(), Self::Error> {
             self.refund_escrow(escrow_id)
+        }
+    }
+
+    impl PropertyRegistry {
+        #[ink(message)]
+        pub fn enable_fractional(
+            &mut self,
+            property_id: u64,
+            total_shares: u128,
+        ) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let property = self.properties.get(property_id).ok_or(Error::PropertyNotFound)?;
+            if caller != self.admin && caller != property.owner {
+                return Err(Error::Unauthorized);
+            }
+            if total_shares == 0 {
+                return Err(Error::InvalidMetadata);
+            }
+            let info = FractionalInfo {
+                total_shares,
+                enabled: true,
+                created_at: self.env().block_timestamp(),
+            };
+            self.fractional.insert(property_id, &info);
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn get_fractional_info(&self, property_id: u64) -> Option<FractionalInfo> {
+            self.fractional.get(property_id)
+        }
+
+        #[ink(message)]
+        pub fn is_fractional(&self, property_id: u64) -> bool {
+            self.fractional
+                .get(property_id)
+                .map(|i: FractionalInfo| i.enabled)
+                .unwrap_or(false)
         }
     }
 }
